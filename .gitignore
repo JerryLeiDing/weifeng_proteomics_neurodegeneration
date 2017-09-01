@@ -1,0 +1,14 @@
+# Don't include raw data or results
+*.csv
+xlsx/
+results/
+
+# Don't include plots
+figures/
+plots/
+
+# Don't include R stuff
+.RData
+*.RProg
+.Rprog.user/
+
