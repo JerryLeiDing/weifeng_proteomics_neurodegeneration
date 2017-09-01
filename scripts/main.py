@@ -177,8 +177,10 @@ def anova_general(df, ko93=True, ko95=True, interact=True):
             number=data.shape[0],
             sort_by='none')).iloc[:,:len(coefs)]
     # F-test for significance for terms OTHER than intercept and PlexB
-    coefs.remove('Intercept')
-    coefs.remove('PlexB')
+    # TODO: do this iteratively and obtain a p-value for every coefficient
+    if len(coefs) > 2:
+        coefs.remove('Intercept')
+        coefs.remove('PlexB')
     res_f = pandas2ri.ri2py(r['topTable'](
             result,
             coef=np.array(coefs),
@@ -193,6 +195,62 @@ def anova_general(df, ko93=True, ko95=True, interact=True):
     res_coef.reset_index(drop=True, inplace=True)
     res_df = pd.concat((data, res_coef, res_f, aux_data), axis=1)
     return res_df, result
+
+
+def anova_noreg(df, ko93=True, ko95=True, interact=True):
+    # TODO documentation
+    # Mention that blocking term is additive
+    
+    # Select relevant columns for the comparison
+    cols = [0,1,2,3]
+    if ko95:
+        cols += [4,5,6,7,8]
+    if ko93:
+        cols += [9,10,11,12,13]
+    if ko95 and ko93:
+        cols += [14,15,16,17]
+
+    # Set up design, coefficients, and subset of data
+    columns = np.array(col_order)[cols]
+    data = df[columns]
+    design = _make_design_matrix(ko93, ko95, interact, columns)
+    coefs = list(design.columns)
+    # Make copy of coefs and remove intercept
+    coefs_no_intercept = list(coefs)
+    coefs_no_intercept.remove('Intercept')
+
+    # Create mapping of coefficients to F and PVal columns
+    coef_col_map = {c: ['F_'+c, 'PVal_'+c] for c in coefs_no_intercept}
+    result_colnames = coefs + [y for x in coef_col_map.values() for y in x]
+    # Create empty result df
+    result = pd.DataFrame(
+            index=np.arange(data.shape[0]),
+            columns=result_colnames,
+            dtype=float)
+    # Make copy of design dataframe and add a column
+    for_anova = design.copy()
+    # Now for each row in data, run ANOVA separately
+    for i in xrange(data.shape[0]):
+        if i % 100 == 0:
+            print i
+        for_anova['Y'] = data.iloc[i].values.astype(float)
+        fit = ols('Y ~ ' + ' + '.join(coefs_no_intercept), for_anova).fit()
+        # Set coefficients
+        result.iloc[i][coefs] = fit.params.values
+        # Extract ANOVA p-values and F-values
+        anova_res = sm.stats.anova_lm(fit, typ=2)
+        # Map to correct result columns
+        for c in anova_res.index:
+            if c in coef_col_map:
+                result.iloc[i][coef_col_map[c]]= anova_res.loc[c][-2:].values
+    # Now bind together everything into one df
+    aux_data = (
+            df[['accession_number', 'geneSymbol', 'entry_name', 'numPepsUnique']].
+            reset_index(drop=True))
+    data.reset_index(drop=True, inplace=True)
+    res_df = pd.concat((data, result, aux_data), axis=1)
+    return res_df
+        
 
 
 # NOTE: deprecated in favor of anova_general
@@ -304,6 +362,7 @@ def anova_2way_nointeraction(df, use='KO93'):
     res_coef.reset_index(drop=True, inplace=True)
     res_df = pd.concat((data, res_coef, res_f, aux_data), axis=1)
     return res_df, result
+
 
 
 def normalize_plexB(anova_res_df):
