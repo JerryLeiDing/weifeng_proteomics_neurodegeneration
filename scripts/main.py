@@ -1,9 +1,11 @@
 import numpy as np
 import pandas as pd
+import statsmodels.api as sm
 import re, sys, time
 sys.dont_write_bytecode = True  # Avoid caching problems
 
 from enum import Enum
+from statsmodels.formula.api import ols
 from statsmodels.sandbox.stats.multicomp import multipletests
 
 from stat_tests import *
@@ -90,14 +92,80 @@ col_order = [
        u'KO95_A3', u'KO95_B1', u'KO95_B2', u'KO93_A1', u'KO93_A2', u'KO93_B1',
        u'KO93_B2', u'KO93_B3', u'DKO_A1', u'DKO_A2', u'DKO_B1', u'DKO_B2'
        ]
-def _make_design_matrix(ko93, ko95):
-    # 0=don't include, 1=include, no interaction term, 2=include with interaction
-    pass
+def _make_design_matrix(ko93, ko95, interact, samples):
+    """
+    Key for ko93 and ko95
+    0=exclude, 1=no interaction term, 2=use interaction term
+
+    Always returns an 18xCOND dataframe
+    Drop rows with all zeros to yield a usable 
+    """
+    # if ko93 not in [0,1,2] or ko95 not in [0,1,2]:
+    #     raise ValueError("ko93 and ko95 must be one of 0,1,2 in anova_general")
+    # 
+    # if ko93 + ko95 == 0:
+    #     raise ValueError("At least one of ko93 and ko95 must be nonzero")
+
+    design_cols = []
+    coef_labels = []
+    n = len(samples)
+   
+    # Determine correct indices for each ko marker
+    ko93_col_idx = [i for i,col in enumerate(samples) if
+            ('KO93' in col) or ('DKO' in col)]
+    ko95_col_idx = [i for i,col in enumerate(samples) if
+            ('KO95' in col) or ('DKO' in col)]
+    plexB_col_idx = [i for i,col in enumerate(samples) if col[-2] == 'B']
+
+    # Intercept term
+    coef_labels.append('Intercept')
+    design_cols.append(np.ones(n, dtype=int))
+    # PlexB term
+    coef_labels.append('PlexB')
+    plexB = np.zeros(n, dtype=int)
+    plexB[plexB_col_idx] = 1
+    design_cols.append(plexB)
+
+    if ko93:
+        coef_labels.append('KO93')
+        ko93_col = np.zeros(n, dtype=int)
+        ko93_col[ko93_col_idx] = 1
+        design_cols.append(ko93_col)
+    if ko95:
+        coef_labels.append('KO95')
+        ko95_col = np.zeros(n, dtype=int)
+        ko95_col[ko95_col_idx] = 1
+        design_cols.append(ko95_col)
+
+    if interact and ko93 and ko95:
+        coef_labels.append('Interaction')
+        interact = np.zeros(n, dtype=int)
+        interact[[x for x in ko93_col_idx if x in ko95_col_idx]] = 1
+        design_cols.append(interact)
+    elif interact:
+        print "Warning: interact has no effect if both ko93 and ko95 are not true"
+
+    return pd.DataFrame.from_items(zip(coef_labels, design_cols))
 
 
-def anova_general(df, ko93=0, ko95=0):
-    # TODO finish me!
-    design, coefs = _make_design_matrix(ko93, ko95)
+def anova_general(df, ko93=True, ko95=True, interact=True):
+    # TODO documentation
+    # Mention that blocking term is additive
+    
+    # Select relevant columns for the comparison
+    cols = [0,1,2,3]
+    if ko95:
+        cols += [4,5,6,7,8]
+    if ko93:
+        cols += [9,10,11,12,13]
+    if ko95 and ko93:
+        cols += [14,15,16,17]
+
+    # Set up design, coefficients, and subset of data
+    columns = np.array(col_order)[cols]
+    data = df[columns]
+    design = _make_design_matrix(ko93, ko95, interact, columns)
+    coefs = list(design.columns)
 
     # Note that result is an R object
     # We can't do much with it directly except call topTable
@@ -108,11 +176,12 @@ def anova_general(df, ko93=0, ko95=0):
             result,
             number=data.shape[0],
             sort_by='none')).iloc[:,:len(coefs)]
-    # F-test for significance for terms OTHER than intercept
+    # F-test for significance for terms OTHER than intercept and PlexB
     coefs.remove('Intercept')
+    coefs.remove('PlexB')
     res_f = pandas2ri.ri2py(r['topTable'](
             result,
-            coef=coefs,
+            coef=np.array(coefs),
             number=data.shape[0],
             sort_by='none'))[['F', 'P.Value', 'adj.P.Val']]
     # Now bind together everything into one df
@@ -126,8 +195,7 @@ def anova_general(df, ko93=0, ko95=0):
     return res_df, result
 
 
-# NOTE: Includes interaction term between plexB and rest
-# TODO: consolidate these two functions into one
+# NOTE: deprecated in favor of anova_general
 def anova_2way_interaction(df, use='KO93'):
     if use == 'KO93':
         ko93 = True
@@ -184,8 +252,7 @@ def anova_2way_interaction(df, use='KO93'):
     return res_df, result
 
 
-# NOTE: No interaction term
-# NOTE: should use this one in future. More degrees of freedom available
+# NOTE: deprecated in favor of anova_general
 def anova_2way_nointeraction(df, use='KO93'):
     if use == 'KO93':
         ko93 = True
@@ -311,33 +378,6 @@ def normalize_plexB(anova_res_df):
     normed_data['accession_number'] = anova_res_df.accession_number
     return normed_data
 
-
-# NOTE: only for (KO95 vs PLEX) WITHOUT interaction term
-def anova_ko95_additive(data):
-    # Order data columns correctly
-    pass
-
-"""
-def _extract_group_plex(name):
-    # TODO check if string
-    group = name.split('_')[0]
-    plex = name.split('_'][1][0]
-
-    return (group, plex)
-
-# NOTE: this is just a subset of the full design matrix case
-# For now, we only care about the PSD95 KO
-def make_anova_design(cols):
-    # Design matrix will have 8 columns in general case
-    # (KO93 x KO95 x PLEX)
-    names = [_extract_group_plex(c) for c in cols]
-
-    design_names = [
-            'KO93'
-            ]
-    design = np.zeros((names, 8), dtype=int)
-    for group, plex in 
-"""
 
 ### END TEMPORARY CODE
 
