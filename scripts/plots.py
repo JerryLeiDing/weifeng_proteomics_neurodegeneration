@@ -81,14 +81,15 @@ LABEL_COLS = [
 ]
 L2 = ['cyberT', 'modT_2samp', 't_test_1samp', 't_test_2samp']
 LABEL_COLS_ADJ = [l + '_adj' for l in LABEL_COLS]
-def compare_measures(res, label_cols, label_cols2=None, title=''):
+def compare_measures(res, label_cols, label_cols2=None, title='', 
+                     count=True, equal=True, sharey=True, sharex=True):
     """ Generate scatterplots comparing pvals with each other
     """
     # TODO: for convenience, should check if integer locations
     if label_cols2 is None:
         label_cols2 = label_cols
     m, n = (len(label_cols), len(label_cols2))
-    f, axarr = plt.subplots(m, n)
+    f, axarr = plt.subplots(m, n, sharex=sharex, sharey=sharey)
     f.suptitle(title)
 
     if 'numPepsUnique' in res.columns:
@@ -121,10 +122,14 @@ def compare_measures(res, label_cols, label_cols2=None, title=''):
             ax.scatter(res[label_cols2[j]].values[mask],
                        res[label_cols[i]].values[mask],
                        color=colors, lw=0)
-            # Count number of significant
-            nsig = np.sum((res[label_cols2[j]].values[mask] <= 0.05) &
-                          (res[label_cols[i]].values[mask] <= 0.05))
-            ax.set_xlabel('%d sig' % nsig)
+            if count:
+                # Count number of significant
+                nsig = np.sum((res[label_cols2[j]].values[mask] <= 0.05) &
+                              (res[label_cols[i]].values[mask] <= 0.05))
+                ax.set_xlabel('%d sig' % nsig)
+            if equal:
+                # Equalize axis scales
+                ax.axis('equal')
 
     f.tight_layout()
     return f

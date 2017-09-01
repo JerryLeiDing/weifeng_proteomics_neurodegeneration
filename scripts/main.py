@@ -183,7 +183,7 @@ def anova_general(df, ko93=True, ko95=True, interact=True):
             result,
             coef=np.array(coefs),
             number=data.shape[0],
-            sort_by='none'))[['F', 'P.Value', 'adj.P.Val']]
+            sort_by='none'))[['P.Value', 'adj.P.Val']] # TODO F not present
     # Now bind together everything into one df
     aux_data = (
             df[['accession_number', 'geneSymbol', 'entry_name', 'numPepsUnique']].
@@ -324,6 +324,7 @@ def normalize_plexB(anova_res_df):
 
     if 'GFP_A1' in anova_res_df.columns:
         # Normalize GFP PlexB channels
+        print "Normalizing GFP"
         normed_data['GFP_A1'] = anova_res_df.GFP_A1
         normed_data['GFP_A2'] = anova_res_df.GFP_A2
         normed_data['GFP_B1'] = anova_res_df.GFP_B1 - anova_res_df.PlexB
@@ -331,6 +332,7 @@ def normalize_plexB(anova_res_df):
 
     if 'KO95_A1' in anova_res_df.columns:
         # Normalize KO95 PlexB channels
+        print "Normalizing KO95"
         normed_data['KO95_A1'] = anova_res_df.KO95_A1
         normed_data['KO95_A2'] = anova_res_df.KO95_A2
         normed_data['KO95_A3'] = anova_res_df.KO95_A3
@@ -343,6 +345,7 @@ def normalize_plexB(anova_res_df):
 
     if 'KO93_A1' in anova_res_df.columns:
         # Normalize KO93 PlexB channels
+        print "Normalizing KO93"
         normed_data['KO93_A1'] = anova_res_df.KO93_A1
         normed_data['KO93_A2'] = anova_res_df.KO93_A2
         normed_data['KO93_B1'] = anova_res_df.KO93_B1 - anova_res_df.PlexB
@@ -356,6 +359,7 @@ def normalize_plexB(anova_res_df):
 
     if 'DKO_A1' in anova_res_df.columns:
         # Normalize DKO PlexB channels
+        print "Normalizing DKO"
         normed_data['DKO_A1'] = anova_res_df.DKO_A1
         normed_data['DKO_A2'] = anova_res_df.DKO_A2
         normed_data['DKO_B1'] = anova_res_df.DKO_B1 - anova_res_df.PlexB
@@ -377,6 +381,65 @@ def normalize_plexB(anova_res_df):
 
     normed_data['accession_number'] = anova_res_df.accession_number
     return normed_data
+
+
+def compare_quality_before_after_anova(df, *args):
+
+    # 93_interaction = anova_2way_interaction(df, use='KO93')[0]
+    # 95_interaction = anova_2way_interaction(df, use='KO95')[0]
+    # 93_nointeraction = anova_2way_nointeraction(df, use='KO93')[0]
+    # 95_nointeraction = anova_2way_nointeraction(df, use='KO95')[0]
+    full_nointeraction, _ = anova_general(df, *args)
+    normalized = normalize_plexB(full_nointeraction)
+    orig_norm_col = normalized.columns
+    normalized.columns = [col + '_NORM' for col in normalized.columns]
+
+    normalized.reset_index(drop=True, inplace=True)
+    df_subset = df[[c for c in df.columns if c in orig_norm_col]].reset_index(drop=True)
+
+    final_df = pd.concat((df_subset, normalized), axis=1)
+    if 'numPepsUnique' in df.columns:
+        final_df['numPepsUnique'] = df.numPepsUnique
+
+    def plot_comparison(cols=[0,1,2,3]):
+        label_cols = final_df.columns[cols]
+        n = len(label_cols)
+        f = compare_measures(final_df, label_cols, count=False, equal=True)
+        label_cols = [col + '_NORM' for col in label_cols] 
+        label_cols2 = label_cols
+        axarr = np.reshape(f.axes, (n, n))
+
+        if 'numPepsUnique' in final_df.columns: 
+            alpha = np.log2(final_df.numPepsUnique)/np.max(np.log2(final_df.numPepsUnique)) 
+        elif 'n_pep' in final_df.columns:
+            alpha = np.log2(final_df.n_pep) / np.max(np.log2(final_df.n_pep))
+        else:                                                                       
+            alpha = np.full((final_df.shape[0],), 1.0)
+
+        for i in xrange(n):
+            for j in xrange(n):
+                if i <= j:
+                    continue
+                mask = (np.isfinite(final_df[label_cols[i]]) &
+                    np.isfinite(final_df[label_cols2[j]]))                           
+                val = np.sum(mask)
+                # Set alpha correctly                                               
+                colors = matplotlib.cm.Reds(np.arange(0, 1, 1./val))                
+                # colors = np.zeros((n, 4)) 
+                # colors[:,0] = 0.9  # Make red 
+                # colors[:,1] = 0.7 # Make red
+                # colors[:,2] = 0.6 # Make red                                      
+                colors[:,-1] = alpha[mask]                                          
+                axarr[i][j].scatter(   # Note that the x-y order is MIRRORED
+                        final_df[label_cols[i]].values[mask],
+                        final_df[label_cols2[j]].values[mask],
+                        color=colors, lw=0)     
+        # Set axes for better visualization 
+        f.axes[0].set_ylim(-5, 5)
+        f.axes[0].set_xlim(-5, 5)
+        return f
+    return plot_comparison
+
 
 
 ### END TEMPORARY CODE
