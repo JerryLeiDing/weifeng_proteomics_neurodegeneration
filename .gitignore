@@ -26,3 +26,4 @@ ENV/
 
 # Swap files
 .*.swp
+.Rproj.user

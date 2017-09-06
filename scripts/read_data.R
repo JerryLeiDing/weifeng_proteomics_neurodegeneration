@@ -41,7 +41,7 @@ read_psm <- function(filename='psm_raw.csv', med_norm=TRUE) {
   return(data)
 }
 
-read_protein <- function(filename='protein_SGS_raw.csv', med_norm=TRUE) {
+read_protein <- function(filename='protein_SGS_raw.csv', med_norm=TRUE, group_genes=TRUE) {
   rel_cols <- c(
     # GFP
     'Melanie.PSDKO_TMT10_Weifeng_052217.RepA_TMTRuns_FullPlex.log2_TMT_126_131_median',
@@ -93,6 +93,14 @@ read_protein <- function(filename='protein_SGS_raw.csv', med_norm=TRUE) {
       "totRef_A", "totRef_B")
 
   data <- data[complete.cases(data),]
+
+  if (group_genes) {
+    # Group by gene symbol, keep protein with greatest number of peptides
+    # First order dataframe by number of peptides (decreasing order)
+    data <- data[order(- data$numSpectra_A - data$numSpectra_B),]
+    # Then drop duplicates
+    data <- data[!duplicated(data$geneSymbol),]
+  }
 
   if (med_norm) {
     # Median normalize each ratio column

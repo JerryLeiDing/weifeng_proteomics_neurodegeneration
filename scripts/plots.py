@@ -208,3 +208,35 @@ def compare_channel_replicates(data, group=True, title=''):
         f.set_size_inches(10, 10)
         f.tight_layout(rect=(0, 0, 1, 0.95))
         f.savefig('figures/%s_channel_reps_%s.png' % (title, name), dpi=100)
+
+
+def intensity_psd_nonpsd(res, psd, ax=None):
+    # Only plots average of GFP columns
+    psd_accnums = set(psd.Accession)
+    in_psd = np.array([1 if ac in psd_accnums else 0 
+                       for ac in res.accession_number])
+
+    res['in_psd'] = in_psd
+    
+    if ax is None:
+        f, ax = plt.subplots()
+    else:
+        f = None
+
+    # Plot non-psd elements
+    gfp_cols = ['GFP_A1', 'GFP_A2', 'GFP_B1', 'GFP_B2']
+    rng = (-2, 2)
+    nb = 40
+    a = 0.5
+
+    ax.hist(np.mean(res[gfp_cols][res.in_psd == 1], axis=1),
+            bins=nb, alpha=a, normed=True, range=rng, label='PSD proteins')
+    ax.hist(np.mean(res[gfp_cols][res.in_psd == 0], axis=1),
+            bins=nb, alpha=a, normed=True, range=rng, label='Other proteins')
+    ax.legend()
+    ax.set_title('Intensity of PSD proteins vs other proteins')
+    ax.set_xlabel('$log_2$ Intensity (normalized to reference channel')
+    ax.set_ylabel('Density')
+
+    return f, ax
+

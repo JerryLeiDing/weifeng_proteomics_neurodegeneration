@@ -69,21 +69,12 @@ def run_protein(data, comp1, comp2, plex='both'):
     keep_cols = [
             'numPepsUnique',
             'accession_number',
-            'accession_numbers',
+            # 'accession_numbers',
             'geneSymbol',
             'entry_name',
         ]
     return pd.concat((c1, c2, data[keep_cols], pvals), axis=1)
 
-
-### TEMPORARY LOCATION FOR THIS CODE
-### TODO: Compare the ANOVA results from eBayes to normal ANOVA without regularization
-### TODO: Compare additive vs interaction ANOVA for experimental term
-### TODO: Plots for evidence of interaction term? But how to do this in limit of many genes? I don't think the average response will be useful
-### Let's just try fitting the ANOVA model
-### MOST IMPORTANT: Is there an interaction term here?
-### TODO: residual plots, hopefully they do show a positive correlation now
-### We'll see!
 
 
 # NOTE: don't change me unless you also change _make_design_matrix(!)
@@ -92,7 +83,7 @@ col_order = [
        u'KO95_A3', u'KO95_B1', u'KO95_B2', u'KO93_A1', u'KO93_A2', u'KO93_B1',
        u'KO93_B2', u'KO93_B3', u'DKO_A1', u'DKO_A2', u'DKO_B1', u'DKO_B2'
        ]
-def _make_design_matrix(ko93, ko95, interact, samples):
+def _make_design_matrix(samples, ko93, ko95, interact, plexb_interact):
     """
     Key for ko93 and ko95
     0=exclude, 1=no interaction term, 2=use interaction term
@@ -145,10 +136,21 @@ def _make_design_matrix(ko93, ko95, interact, samples):
     elif interact:
         print "Warning: interact has no effect if both ko93 and ko95 are not true"
 
+    if plexb_interact and ko93:
+        coef_labels.append('KO93xPleXB')
+        interact = np.zeros(n, dtype=int)
+        interact[[x for x in ko93_col_idx if x in plexB_col_idx]] = 1
+        design_cols.append(interact)
+    if plexb_interact and ko95:
+        coef_labels.append('KO95xPleXB')
+        interact = np.zeros(n, dtype=int)
+        interact[[x for x in ko95_col_idx if x in plexB_col_idx]] = 1
+        design_cols.append(interact)
+
     return pd.DataFrame.from_items(zip(coef_labels, design_cols))
 
 
-def anova_general(df, ko93=True, ko95=True, interact=True):
+def anova_general(df, ko93=True, ko95=True, interact=True, plexb_interact=False):
     # TODO documentation
     # Mention that blocking term is additive
     
@@ -158,13 +160,13 @@ def anova_general(df, ko93=True, ko95=True, interact=True):
         cols += [4,5,6,7,8]
     if ko93:
         cols += [9,10,11,12,13]
-    if ko95 and ko93:
+    if ko95 and ko93 and interact:  # Drop DKO unless interact
         cols += [14,15,16,17]
 
     # Set up design, coefficients, and subset of data
     columns = np.array(col_order)[cols]
     data = df[columns]
-    design = _make_design_matrix(ko93, ko95, interact, columns)
+    design = _make_design_matrix(columns, ko93, ko95, interact, plexb_interact)
     coefs = list(design.columns)
 
     # Note that result is an R object
@@ -177,15 +179,22 @@ def anova_general(df, ko93=True, ko95=True, interact=True):
             number=data.shape[0],
             sort_by='none')).iloc[:,:len(coefs)]
     # F-test for significance for terms OTHER than intercept and PlexB
-    # TODO: do this iteratively and obtain a p-value for every coefficient
-    if len(coefs) > 2:
-        coefs.remove('Intercept')
-        coefs.remove('PlexB')
-    res_f = pandas2ri.ri2py(r['topTable'](
-            result,
-            coef=np.array(coefs),
-            number=data.shape[0],
-            sort_by='none'))[['P.Value', 'adj.P.Val']] # TODO F not present
+    # Do this iteratively and obtain a p-value and F-value for every coefficient
+    coefs.remove('Intercept')
+    # Create mapping of coefficients to F and PVal columns
+    coef_col_map = {c: ['F_'+c, 'PVal_'+c] for c in coefs}
+    result_colnames = [y for x in coef_col_map.values() for y in x]
+    # Create empty pvalue df
+    res_f = pd.DataFrame(
+            index=np.arange(data.shape[0]),
+            columns=result_colnames,
+            dtype=float)
+    for c in coef_col_map.keys():
+        res_f[coef_col_map[c]] = pandas2ri.ri2py(r['topTable'](
+                result,
+                coef=c,
+                number=data.shape[0],
+                sort_by='none'))[['t', 'P.Value']]
     # Now bind together everything into one df
     aux_data = (
             df[['accession_number', 'geneSymbol', 'entry_name', 'numPepsUnique']].
@@ -197,7 +206,7 @@ def anova_general(df, ko93=True, ko95=True, interact=True):
     return res_df, result
 
 
-def anova_noreg(df, ko93=True, ko95=True, interact=True):
+def anova_noreg(df, ko93=True, ko95=True, interact=True, plexb_interact=True):
     # TODO documentation
     # Mention that blocking term is additive
     
@@ -207,7 +216,7 @@ def anova_noreg(df, ko93=True, ko95=True, interact=True):
         cols += [4,5,6,7,8]
     if ko93:
         cols += [9,10,11,12,13]
-    if ko95 and ko93:
+    if ko95 and ko93 and interact:  # Drop DKO unless interact
         cols += [14,15,16,17]
 
     # Set up design, coefficients, and subset of data
@@ -566,6 +575,15 @@ def run_peptide(data, comp1, comp2):
     # TODO
     pass
 
+# Example workflow for KO95 vs GFP comparison, using protein report 
+# data = pd.read_csv('protein.csv')
+# ko95_anova, _ = anova_general(data, ko93=False, ko95=True, interaction=False)
+# ko95_norm = normalize_plexb(ko95_anova)
+# ko95_anova.iloc[:,:9] = ko95_norm.iloc[:,:9]
+# res = run_protein(ko95_anova, 'KO95', 'GFP')
+
+### ALL DEPRECATED ###
+### USE NORMALIZATION PROCEDURE ANOVA ###
 
 def rerun_proteins(data_file='protein.csv'):
     data = pd.read_csv(data_file)
