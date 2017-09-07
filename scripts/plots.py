@@ -225,7 +225,7 @@ def intensity_psd_nonpsd(res, psd, ax=None):
 
     # Plot non-psd elements
     gfp_cols = ['GFP_A1', 'GFP_A2', 'GFP_B1', 'GFP_B2']
-    rng = (-2, 2)
+    rng = (-8, 8)
     nb = 40
     a = 0.5
 

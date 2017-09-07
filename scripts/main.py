@@ -509,6 +509,13 @@ def compare_quality_before_after_anova(df, *args):
     return plot_comparison
 
 
+def find_uncorrelated_gfp_proteins(normed):
+    # Here, we treat all proteins with mean GFP.PlexB of >= 1 as uncorrelated
+    # TODO: we can also try getting multiple categories from each channel
+
+    is_uncorr = (np.mean(normed[['GFP_B1', 'GFP_B2']], axis=1) >= 1.0)
+    return normed[is_uncorr]
+
 
 ### END TEMPORARY CODE
 

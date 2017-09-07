@@ -170,3 +170,67 @@ read_peptide <- function(filename='peptide_raw.csv', med_norm=TRUE) {
 
   return(data)
 }
+
+
+read_protein_raw <- function(filename, group_genes=TRUE, med_norm=TRUE) {
+  rel_cols <- c(
+    # GFP
+    'Melanie.PSDKO_TMT10_Weifeng_052217.RepA_TMTRuns_FullPlex.TMT_126_total',
+    'Melanie.PSDKO_TMT10_Weifeng_052217.RepA_TMTRuns_FullPlex.TMT_127N_total',
+    'Melanie.PSDKO_TMT10_Weifeng_052217.RepB_TMTRuns_FullPlex.TMT_126_total',
+    'Melanie.PSDKO_TMT10_Weifeng_052217.RepB_TMTRuns_FullPlex.TMT_127N_total',
+
+    'Melanie.PSDKO_TMT10_Weifeng_052217.RepA_TMTRuns_FullPlex.TMT_127C_total',
+    'Melanie.PSDKO_TMT10_Weifeng_052217.RepA_TMTRuns_FullPlex.TMT_128N_total',
+    'Melanie.PSDKO_TMT10_Weifeng_052217.RepA_TMTRuns_FullPlex.TMT_128C_total',
+    'Melanie.PSDKO_TMT10_Weifeng_052217.RepB_TMTRuns_FullPlex.TMT_127C_total',
+    'Melanie.PSDKO_TMT10_Weifeng_052217.RepB_TMTRuns_FullPlex.TMT_128N_total',
+
+    'Melanie.PSDKO_TMT10_Weifeng_052217.RepA_TMTRuns_FullPlex.TMT_129N_total',
+    'Melanie.PSDKO_TMT10_Weifeng_052217.RepA_TMTRuns_FullPlex.TMT_129C_total',
+    'Melanie.PSDKO_TMT10_Weifeng_052217.RepB_TMTRuns_FullPlex.TMT_128C_total',
+    'Melanie.PSDKO_TMT10_Weifeng_052217.RepB_TMTRuns_FullPlex.TMT_129N_total',
+    'Melanie.PSDKO_TMT10_Weifeng_052217.RepB_TMTRuns_FullPlex.TMT_129C_total',
+    
+    'Melanie.PSDKO_TMT10_Weifeng_052217.RepA_TMTRuns_FullPlex.TMT_130N_total',
+    'Melanie.PSDKO_TMT10_Weifeng_052217.RepA_TMTRuns_FullPlex.TMT_130C_total',
+    'Melanie.PSDKO_TMT10_Weifeng_052217.RepB_TMTRuns_FullPlex.TMT_130N_total',
+    'Melanie.PSDKO_TMT10_Weifeng_052217.RepB_TMTRuns_FullPlex.TMT_130C_total',
+
+    'Melanie.PSDKO_TMT10_Weifeng_052217.RepA_TMTRuns_FullPlex.TMT_131_total',
+    'Melanie.PSDKO_TMT10_Weifeng_052217.RepB_TMTRuns_FullPlex.TMT_131_total',
+    'Melanie.PSDKO_TMT10_Weifeng_052217.RepA_TMTRuns_FullPlex.numSpectra',
+    'Melanie.PSDKO_TMT10_Weifeng_052217.RepB_TMTRuns_FullPlex.numSpectra',
+    'accession_number',
+    'accession_numbers',
+    'geneSymbol',
+    'numPepsUnique',
+    'entry_name')
+  data <- read.csv(filename)[,rel_cols]
+  colnames(data)[1:4] <- c("GFP_A1", "GFP_A2", "GFP_B1", "GFP_B2")
+  colnames(data)[5:9] <- c("KO95_A1", "KO95_A2", "KO95_A3", "KO95_B1", "KO95_B2")
+  colnames(data)[10:14] <- c("KO93_A1", "KO93_A2", "KO93_B1", "KO93_B2", "KO93_B3")
+  colnames(data)[15:18] <- c("DKO_A1", "DKO_A2", "DKO_B1", "DKO_B2")
+  colnames(data)[19:20] <- c("REF_A1", "REF_B1")
+  colnames(data)[21:22] <- c("numSpectra_A", "numSpectra_B")
+
+  # Log2 intensity data
+  data[,1:20] <- log2(data[,1:20])
+
+  data <- data[complete.cases(data),]
+
+  if (group_genes) {
+    # Group by gene symbol, keep protein with greatest number of peptides
+    # First order dataframe by number of peptides (decreasing order)
+    data <- data[order(- data$numSpectra_A - data$numSpectra_B),]
+    # Then drop duplicates
+    data <- data[!duplicated(data$geneSymbol),]
+  }
+
+  if (med_norm) {
+    # Median normalize each ratio column
+    medians = unlist(lapply(data[,1:18], median))
+    data[,1:18] <- sweep(data[,1:18], 2, medians, '-')
+  }
+  return(data)
+}

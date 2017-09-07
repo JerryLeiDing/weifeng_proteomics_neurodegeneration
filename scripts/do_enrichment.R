@@ -28,13 +28,15 @@ find_overlap <- function(res, psd, alpha=0.05, use_col='cyberT_adj') {
               down_proteins=down_proteins,
               log_hyperp=logp,
               num_proteins_up=length(up_proteins),
-              num_proteins_up_psd=length(up_proteins_psd),
+              num_proteins_up_psd=nrow(up_proteins_psd),
               num_proteins_down=length(down_proteins),
               num_proteins_down_psd=nrow(down_proteins_psd), 
               num_proteins_total=all_seen))
 }
 
 plot_venn <- function(overlap, name) {
+  # TODO more elegant
+  overlap$num_proteins_both_psd <- 0
   p = 1:1556
   u = c(c(1:overlap$num_proteins_up_psd),
         c(1557:(1556 + overlap$num_proteins_up - overlap$num_proteins_up_psd)))
@@ -71,8 +73,8 @@ setup_enrich <- function() {
   library(org.Mm.eg.db)
 }
 
-convert_entrez <- function(gene_list, filename=NULL) {
-  entrez <- bitr(gene_list, fromType="ACCNUM", toType=c("ENTREZID", "SYMBOL"), OrgDb="org.Mm.eg.db")
+convert_entrez <- function(gene_list, fromType='ACCNUM', filename=NULL) {
+  entrez <- bitr(gene_list, fromType=fromType, toType=c("ENTREZID", "SYMBOL"), OrgDb="org.Mm.eg.db")
   if (!is.null(filename)) {
     write.table(entrez, paste("enrichment/", filename, sep=''), sep='\t', row.names=FALSE, quote=FALSE)
   }
@@ -95,7 +97,7 @@ go_group <- function(gene_list, ont="MF", level=3, is_entrez=FALSE) {
   } else {
     entrez_genes <- gene_list
   }
-  out <- groupGO(gene=entrez_genes, organism="mouse", ont=ont, level=level)
+  out <- groupGO(gene=entrez_genes, OrgDb='org.Mm.eg.db', ont=ont, level=level, readable=TRUE)
   out@result <- out@result[order(out@result$Count, decreasing=TRUE),]
   return(out)
 }
@@ -111,6 +113,7 @@ generate_gsea_gene_list <- function(ng_joint_complete) {
 
 
 filter_go_rankings_to <- function(enrich_result, level) {
+  # 1 is most general, 5 is most specific
   tmp <- enrich_result
   for (l in 1:level) {
     tmp <- dropGO(tmp, level=l)
@@ -118,32 +121,45 @@ filter_go_rankings_to <- function(enrich_result, level) {
   return(tmp)
 }
 
-
-if (FALSE) {
+RUN_OVERLAP <- F
+RUN_CONVERT <- F
+RUN_ENRICH <- F
+if (RUN_OVERLAP) {
+  psd_overlap <- find_overlap(res_protein, psd, alpha=0.05, use_col='cyberT_adj')
+  psd_overlap_strict <- 
+    find_overlap(res_protein, psd, alpha=0.01, use_col='modT_2samp_adj')
+}
+if (RUN_CONVERT) {
   # Convert gene names
-  down_entrez_genes <- convert_entrez(
-      unique(psd_overlap$down_proteins),
-  )
+  # down_entrez_genes <- convert_entrez(
+  #     unique(psd_overlap$down_proteins),
+  # )
+  # up_entrez_genes <- convert_entrez(
+  #     unique(psd_overlap$up_proteins),
+  # )
 
   down_entrez_genes_psd <- convert_entrez(
       unique(psd_overlap$down_proteins_psd$accession_number),
   )
-
-  up_entrez_genes <- convert_entrez(
-      unique(psd_overlap$up_proteins),
-  )
-
   up_entrez_genes_psd <- convert_entrez(
       unique(psd_overlap$up_proteins_psd$accession_number),
   )
+  down_entrez_genes_psd_strict <- convert_entrez(
+      unique(psd_overlap_strict$down_proteins_psd$accession_number),
+  )
+  up_entrez_genes_psd_strict <- convert_entrez(
+      unique(psd_overlap_strict$up_proteins_psd$accession_number),
+  )
 }
 
-if (FALSE) {
+if (RUN_ENRICH) {
   # Do enrichment
-  enrich_down <- go_enrich(down_entrez_genes, is_entrez=TRUE)
+  # enrich_down <- go_enrich(down_entrez_genes, is_entrez=TRUE)
+  # enrich_up <- go_enrich(up_entrez_genes, is_entrez=TRUE)
   enrich_down_psd <- go_enrich(down_entrez_genes_psd, is_entrez=TRUE)
-  enrich_up <- go_enrich(up_entrez_genes, is_entrez=TRUE)
   enrich_up_psd <- go_enrich(up_entrez_genes_psd, is_entrez=TRUE)
+  enrich_down_psd_strict <- go_enrich(down_entrez_genes_psd_strict, is_entrez=TRUE)
+  enrich_up_psd_strict <- go_enrich(up_entrez_genes_psd_strict, is_entrez=TRUE)
 }
 
 # ngkd_down_enrich <- go_enrich(unique(
