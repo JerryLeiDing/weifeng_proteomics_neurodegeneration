@@ -19,15 +19,21 @@ def validate_comp_subset_data(data, comp1, comp2):
     data: pandas df with columns GFP/KO93/KO95/DKO as necessary for comparison
           comp1, comp2: one of 'GFP', 'KO93', 'KO95', 'DKO'
     """
-    valid = ['GFP', 'KO93', 'KO95', 'DKO']
-    if comp1 not in valid or comp2 not in valid:
-        raise ValueError('Invalid specification for comparison')
+    # Old validation logic
+    # valid = ['GFP', 'KO93', 'KO95', 'DKO']
+    # if comp1 not in valid or comp2 not in valid:
+    #     raise ValueError('Invalid specification for comparison')
     columns = list(data.columns)
 
     comp1_pattern = re.compile('^' + comp1 + '_[A-B][0-9]$')
     comp1_cols = [c for c in columns if comp1_pattern.match(c) ]
     comp2_pattern = re.compile('^' + comp2 + '_[A-B][0-9]$')
     comp2_cols = [c for c in columns if comp2_pattern.match(c) ]
+
+    if len(comp1_cols) == 0:
+        raise ValueError('No columns found for condition %s' % comp1)
+    if len(comp2_cols) == 0:
+        raise ValueError('No columns found for condition %s' % comp2)
 
     c1 = data[comp1_cols]
     c2 = data[comp2_cols]
@@ -67,14 +73,80 @@ def run_protein(data, comp1, comp2, plex='both'):
             pvals[c+'_adj'] = adj
 
     keep_cols = [
-            'numPepsUnique',
+            'numPepsUnique',  # TODO move this into the alternate cols check
             'accession_number',
             # 'accession_numbers',
             'geneSymbol',
             'entry_name',
         ]
+    # TODO check for optional columns
+    # OR just keep everything that isn't explicitly removed?
     return pd.concat((c1, c2, data[keep_cols], pvals), axis=1)
 
+
+def anova_sept(df):
+    """
+    Runs 2-way ANOVA on September dataset
+    """
+
+    # Set up design, coefficients, and subset of data
+    columns = [
+            'P25_EE_A1','P25_EE_A2','P25_EE_A3',
+            'CT_EE_A1','CT_EE_A2','CT_EE_A3',
+            'P25_HC_A1','P25_HC_A2',
+            'CT_HC_A1','CT_HC_A2'
+            ]
+    data = df[columns]
+    # TODO
+    # Design matrix with each column as coefficient
+    design = pd.DataFrame.from_items([
+        ('Intercept', np.ones(len(columns))),
+        ('EnrichedEnvironment', [1,1,1,1,1,1,0,0,0,0]),
+        ('P25', [1,1,1,0,0,0,1,1,0,0]),
+        ('EnrichxP25', [1,1,1,0,0,0,0,0,0,0])
+        ])
+    coefs = list(design.columns)
+
+    # Note that result is an R object
+    # We can't do much with it directly except call topTable
+    result = r['moderated.t'](data, design=design)
+
+    # Now obtain best estimates for each coefficient
+    res_coef = pandas2ri.ri2py(r['topTable'](
+            result,
+            number=data.shape[0],
+            sort_by='none')).iloc[:,:len(coefs)]
+    # F-test for significance for terms OTHER than intercept and PlexB
+    # Do this iteratively and obtain a p-value and F-value for every coefficient
+    coefs.remove('Intercept')
+    # Create mapping of coefficients to F and PVal columns
+    coef_col_map = {c: ['F_'+c, 'PVal_'+c] for c in coefs}
+    result_colnames = [y for x in coef_col_map.values() for y in x]
+    # Create empty pvalue df
+    res_f = pd.DataFrame(
+            index=np.arange(data.shape[0]),
+            columns=result_colnames,
+            dtype=float)
+    for c in coef_col_map.keys():
+        res_f[coef_col_map[c]] = pandas2ri.ri2py(r['topTable'](
+                result,
+                coef=c,
+                number=data.shape[0],
+                sort_by='none'))[['t', 'P.Value']]
+    # Now bind together everything into one df
+    aux_data = (
+            df[['accession_number', 'geneSymbol', 'entry_name']].
+            reset_index(drop=True))
+    data.reset_index(drop=True, inplace=True)
+    res_f.reset_index(drop=True, inplace=True)
+    res_coef.reset_index(drop=True, inplace=True)
+    res_df = pd.concat((data, res_coef, res_f, aux_data), axis=1)
+    # Check for phosphopeptide columns, add if present
+    # TODO
+    for pcol in ['']:
+        # Check if pcol in df, if so add it to res_df as well
+        pass
+    return res_df, result
 
 # The following code is specifically for the 2x2 ANOVA in the August dataset
 # NOTE: don't change me unless you also change _make_design_matrix(!)
@@ -91,11 +163,6 @@ def _make_design_matrix(samples, ko93, ko95, interact, plexb_interact):
     Always returns an 18xCOND dataframe
     Drop rows with all zeros to yield a usable 
     """
-    # if ko93 not in [0,1,2] or ko95 not in [0,1,2]:
-    #     raise ValueError("ko93 and ko95 must be one of 0,1,2 in anova_general")
-    # 
-    # if ko93 + ko95 == 0:
-    #     raise ValueError("At least one of ko93 and ko95 must be nonzero")
 
     design_cols = []
     coef_labels = []

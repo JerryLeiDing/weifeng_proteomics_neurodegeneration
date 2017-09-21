@@ -21,9 +21,9 @@ plot_data_quality <- function(df, filename='raw_quality.png') {
     col <- df[,name]
 
     # Calculate mean, std dev, and interquartile range
-    mn <- mean(col)
+    mn <- mean(col, na.rm=T)
     md <- median(col)
-    stdev <- sd(col)
+    stdev <- sd(col, na.rm=T)
     # 2.25% - 97.75% range (=4x stddev for normal)
     # qt = quantile(col, probs=c(0.02275013, 1-0.02275013))
     # (1x stddev for normal)
@@ -60,6 +60,13 @@ plot_data_quality <- function(df, filename='raw_quality.png') {
 # Will filter by complete cases in data cols
 clean_data <- function(data, data_cols, med_norm=TRUE, log=TRUE, 
                        group_genes=FALSE, plot_filename=NULL) {
+  # Filter to rows where all data cols are complete
+  incomplete <- !complete.cases(data[,data_cols])
+  if (any(incomplete)) {
+    warning(paste('Dropping', sum(incomplete), 'rows with NA values'))
+    data <- data[!incomplete,]
+  }
+
   if (log) {
     data[,data_cols] <- log2(data[,data_cols])
   }
@@ -71,6 +78,7 @@ clean_data <- function(data, data_cols, med_norm=TRUE, log=TRUE,
   }
 
   if (!is.null(plot_filename)) {
+    print(head(data[,data_cols]))
     plot_data_quality(data[,data_cols], plot_filename)
   }
 
@@ -83,6 +91,7 @@ clean_data <- function(data, data_cols, med_norm=TRUE, log=TRUE,
   return(data)
 }
 
+# TODO: fix me to work with clean_data?
 read_psm <- function(filename='psm_raw.csv', med_norm=TRUE) {
   rel_cols = c(
         "TMT_126_131", "TMT_127N_131",
@@ -95,6 +104,13 @@ read_psm <- function(filename='psm_raw.csv', med_norm=TRUE) {
         "filename"
         )
   data <- read.csv(filename)[,rel_cols]
+ 
+  # TODO: use clean_data instead of existing functions 
+  if (FALSE) {
+    data <- clean_data(data, c(1:9), med_norm=T, log=T, group_genes=F,
+                       plot_filename='figures/raw_quality/Aug_psm.png')
+  }
+
   # Log the value cols
   data[,1:9] <- log2(data[,1:9])
 
@@ -124,7 +140,7 @@ read_psm <- function(filename='psm_raw.csv', med_norm=TRUE) {
   return(data)
 }
 
-read_protein <- function(filename='protein_SGS_raw.csv', med_norm=TRUE, group_genes=TRUE) {
+read_protein_aug <- function(filename='protein_raw.csv') {
   rel_cols <- c(
     # GFP
     'Melanie.PSDKO_TMT10_Weifeng_052217.RepA_TMTRuns_FullPlex.log2_TMT_126_131_median',
@@ -164,7 +180,7 @@ read_protein <- function(filename='protein_SGS_raw.csv', med_norm=TRUE, group_ge
     'geneSymbol',
     'numPepsUnique',
     'entry_name')
-  data <- read.csv(filename)[,rel_cols]
+  data <- read.csv(paste('data/Aug_2017/',filename,sep=''))[,rel_cols]
   colnames(data)[1:4] <- c("GFP_A1", "GFP_A2", "GFP_B1", "GFP_B2")
   colnames(data)[5:9] <- c("KO95_A1", "KO95_A2", "KO95_A3", "KO95_B1", "KO95_B2")
   colnames(data)[10:14] <- c("KO93_A1", "KO93_A2", "KO93_B1", "KO93_B2", "KO93_B3")
@@ -175,26 +191,18 @@ read_protein <- function(filename='protein_SGS_raw.csv', med_norm=TRUE, group_ge
       "uniquePeps_A", "uniquePeps_B",
       "totRef_A", "totRef_B")
 
-  data <- data[complete.cases(data),]
+  # First order dataframe by number of peptides (decreasing order)
+  # So we keep the more abundant protein when grouping genes
+  data <- data[order(- data$numSpectra_A - data$numSpectra_B),]
+  data <- clean_data(data, c(1:18), med_norm=T, log=F, group_genes=T,
+                     plot_filename='figures/raw_quality/Aug_protein.png')
 
-  if (group_genes) {
-    # Group by gene symbol, keep protein with greatest number of peptides
-    # First order dataframe by number of peptides (decreasing order)
-    data <- data[order(- data$numSpectra_A - data$numSpectra_B),]
-    # Then drop duplicates
-    data <- data[!duplicated(data$geneSymbol),]
-  }
-
-  if (med_norm) {
-    # Median normalize each ratio column
-    medians = unlist(lapply(data[,1:18], median))
-    data[,1:18] <- sweep(data[,1:18], 2, medians, '-')
-  }
   return(data)
 }
 
 
-read_peptide <- function(filename='peptide_raw.csv', med_norm=TRUE) {
+# TODO: Fix data file (extra line above for some reason?)
+read_peptide_aug <- function(filename='peptide_raw.csv', med_norm=TRUE) {
   rel_cols <- c(
       # GFP
       'log2_TMT_126_131_mean',
@@ -234,28 +242,24 @@ read_peptide <- function(filename='peptide_raw.csv', med_norm=TRUE) {
       'protein_group_num',
       'protein_score',
       'entry_name')
-  data <- read.csv(filename)[,rel_cols]
+  data <- read.csv('data/Aug_2017/peptides_raw.csv')[,rel_cols]
   colnames(data)[1:4] <- c("GFP_A1", "GFP_A2", "GFP_B1", "GFP_B2")
   colnames(data)[5:9] <- c("KO95_A1", "KO95_A2", "KO95_A3", "KO95_B1", "KO95_B2")
   colnames(data)[10:14] <- c("KO93_A1", "KO93_A2", "KO93_B1", "KO93_B2", "KO93_B3")
   colnames(data)[15:18] <- c("DKO_A1", "DKO_A2", "DKO_B1", "DKO_B2")
-  colnames(data)[19:24] <- c(
+  colnames(data)[19:22] <- c(
       "numSpectra_A", "numSpectra_B",
       "score_A", "score_B"
   )
 
-  data <- data[complete.cases(data),]
-  if (med_norm) {
-    # Median normalize each ratio column
-    medians = unlist(lapply(data[,1:18], median))
-    data[,1:18] <- sweep(data[,1:18], 2, medians, '-')
-  }
+  data <- clean_data(data, c(1:18), med_norm=T, log=F, group_genes=F,
+                     plot_filename='figures/raw_quality/Aug_peptides.png')
 
   return(data)
 }
 
 
-read_protein_raw <- function(filename, group_genes=TRUE, med_norm=TRUE) {
+read_protein_raw_aug <- function() {
   rel_cols <- c(
     # GFP
     'Melanie.PSDKO_TMT10_Weifeng_052217.RepA_TMTRuns_FullPlex.TMT_126_total',
@@ -289,7 +293,7 @@ read_protein_raw <- function(filename, group_genes=TRUE, med_norm=TRUE) {
     'geneSymbol',
     'numPepsUnique',
     'entry_name')
-  data <- read.csv(filename)[,rel_cols]
+  data <- read.csv('data/Aug_2017/protein_raw.csv')[,rel_cols]
   colnames(data)[1:4] <- c("GFP_A1", "GFP_A2", "GFP_B1", "GFP_B2")
   colnames(data)[5:9] <- c("KO95_A1", "KO95_A2", "KO95_A3", "KO95_B1", "KO95_B2")
   colnames(data)[10:14] <- c("KO93_A1", "KO93_A2", "KO93_B1", "KO93_B2", "KO93_B3")
@@ -297,29 +301,14 @@ read_protein_raw <- function(filename, group_genes=TRUE, med_norm=TRUE) {
   colnames(data)[19:20] <- c("REF_A1", "REF_B1")
   colnames(data)[21:22] <- c("numSpectra_A", "numSpectra_B")
 
-  # Log2 intensity data
-  data[,1:20] <- log2(data[,1:20])
-
-  data <- data[complete.cases(data),]
-
-  if (group_genes) {
-    # Group by gene symbol, keep protein with greatest number of peptides
-    # First order dataframe by number of peptides (decreasing order)
-    data <- data[order(- data$numSpectra_A - data$numSpectra_B),]
-    # Then drop duplicates
-    data <- data[!duplicated(data$geneSymbol),]
-  }
-
-  if (med_norm) {
-    # Median normalize each ratio column
-    medians = unlist(lapply(data[,1:18], median))
-    data[,1:18] <- sweep(data[,1:18], 2, medians, '-')
-  }
+  data <- data[order(- data$numSpectra_A - data$numSpectra_B),]
+  data <- clean_data(data, c(1:20), med_norm=T, log=F, group_genes=T,
+                     plot_filename='figures/raw_quality/Aug_protein_nolog.png')
   return(data)
 }
 
 
-read_protein_march <- function(plot=TRUE, group_genes=TRUE, med_norm=FALSE) {
+read_protein_march <- function() {
   data <- read.csv('data/March_2017/proteins_raw.csv')
 
   colnames(data) <- c(
@@ -344,13 +333,74 @@ read_protein_march <- function(plot=TRUE, group_genes=TRUE, med_norm=FALSE) {
 
   # Reorder data so intensities are at front
   data <- data[,c(6:16,1:5)]
-  # Log2 intensity data
-  data[,1:10] <- log2(data[,1:10])
+  data <- clean_data(data, c(1:10), med_norm=F, log=T, group_genes=T,
+                     plot_filename='figures/raw_quality/Mar_protein_raw.png')
 
-  if (any(!complete.cases(data))) {
-    warning(paste('Dropping', sum(!complete.cases(data)), 'rows with NA'))
-    data <- data[complete.cases(data),]
-  }
+  return(data)
+}
+
+read_phosphos_march <- function() {
+  data <- read.csv('data/March_2017/phospho_raw.csv')
+  colnames(data) <- c(
+        'reference',
+        'accession_number',
+        'uniprot',
+        'geneSymbol',
+        'entry_name',
+        'sites',
+        'phosphoresidues',
+        'motif',
+        'maxscore',
+        'sequence',
+        'P25F_A1',
+        'P25F_A2',
+        'P25F_A3',
+        'P25F_A4',
+        'P25F_A5',
+        'P25F_A6',
+        'CKF_A1',
+        'CKF_A2',
+        'CKF_A3',
+        'CKF_A4',
+        'ratio')
+
+  # Reorder data so intensities are first
+  data <- data[,c(11:21,1:7,10)]
+  data <- clean_data(data, c(1:10), med_norm=F, log=T, group_genes=F,
+                     plot_filename='figures/raw_quality/Mar_phospho_raw.png')
+
+  return(data)
+}
+
+
+read_phosphos_sept <- function() {
+  data <- read.csv('data/Sept_2017/phospho_raw.csv')
+  colnames(data) <- c(
+        'reference',
+        'accession_number',
+        'uniprot',
+        'geneSymbol',
+        'entry_name',
+        'sites',
+        'motif',
+        'phosphoresidues',
+        'protein_sites',
+        'maxscore',
+        'P25_EE_A1',
+        'P25_EE_A2',
+        'P25_EE_A3',
+        'CT_EE_A1',
+        'CT_EE_A2',
+        'CT_EE_A3',
+        'P25_HC_A1',
+        'P25_HC_A2',
+        'CT_HC_A1',
+        'CT_HC_A2')
+
+  # Reorder data so intensities are first
+  data <- data[,c(11:20,9,2:6,8)]
+  data <- clean_data(data, c(1:10), med_norm=F, log=T, group_genes=F,
+                     plot_filename='figures/raw_quality/Sept_phospho_raw.png')
 
   return(data)
 }
