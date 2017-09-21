@@ -4,7 +4,6 @@ import statsmodels.api as sm
 import re, sys, time
 sys.dont_write_bytecode = True  # Avoid caching problems
 
-from enum import Enum
 from statsmodels.formula.api import ols
 from statsmodels.sandbox.stats.multicomp import multipletests
 
@@ -73,13 +72,14 @@ def run_protein(data, comp1, comp2, plex='both'):
             pvals[c+'_adj'] = adj
 
     keep_cols = [
-            'numPepsUnique',  # TODO move this into the alternate cols check
             'accession_number',
-            # 'accession_numbers',
             'geneSymbol',
             'entry_name',
         ]
+    if 'numPepsUnique' in data.columns:
+        keep_cols = ['numPepsUnique'] + keep_cols
     # TODO check for optional columns
+    # Should really make this a global option in a settings file somewhere
     # OR just keep everything that isn't explicitly removed?
     return pd.concat((c1, c2, data[keep_cols], pvals), axis=1)
 
@@ -147,6 +147,7 @@ def anova_sept(df):
         # Check if pcol in df, if so add it to res_df as well
         pass
     return res_df, result
+
 
 # The following code is specifically for the 2x2 ANOVA in the August dataset
 # NOTE: don't change me unless you also change _make_design_matrix(!)
@@ -646,8 +647,7 @@ def run_psm(data, comp1, comp2, plex='both'):
 
 
 def run_peptide(data, comp1, comp2):
-    # TODO
-    pass
+    raise ValueError("Not implemented!")
 
 # Example workflow for KO95 vs GFP comparison, using protein report 
 # data = pd.read_csv('protein.csv')
@@ -656,52 +656,3 @@ def run_peptide(data, comp1, comp2):
 # ko95_anova.iloc[:,:9] = ko95_norm.iloc[:,:9]
 # res = run_protein(ko95_anova, 'KO95', 'GFP')
 
-### ALL DEPRECATED ###
-### USE NORMALIZATION PROCEDURE ANOVA ###
-
-def rerun_proteins(data_file='protein.csv'):
-    data = pd.read_csv(data_file)
-    res_93_gfp = run_protein(data, 'KO93', 'GFP')
-    res_95_gfp = run_protein(data, 'KO95', 'GFP')
-    res_dko_gfp = run_protein(data, 'DKO', 'GFP')
-
-    res_93_gfp.to_csv('results/ns_KO93_vs_GFP.csv', index=False)
-    res_95_gfp.to_csv('results/ns_KO95_vs_GFP.csv', index=False)
-    res_dko_gfp.to_csv('results/ns_DKO_vs_GFP.csv', index=False)
-
-    generate_figures(res_93_gfp, L2, 'ns_KO93_vs_GFP')
-    generate_figures(res_95_gfp, L2, 'ns_KO95_vs_GFP')
-    generate_figures(res_dko_gfp, L2, 'ns_DKO_vs_GFP')
-
-
-def rerun_proteins_onplex(data_file='protein.csv'):
-    data = pd.read_csv(data_file)
-    res_95_gfp_A = run_protein(data, 'KO95', 'GFP', plex='A')
-    res_95_gfp_B = run_protein(data, 'KO95', 'GFP', plex='B')
-
-    combined = pd.merge(res_95_gfp_A, res_95_gfp_B, on='accession_number')
-    return combined
-
-def rerun_psm(data_file='psm.csv'):
-    data = pd.read_csv(data_file)
-    res_93_gfp = run_psm(data, 'KO93', 'GFP')
-    res_95_gfp = run_psm(data, 'KO95', 'GFP')
-    res_dko_gfp = run_psm(data, 'DKO', 'GFP')
-
-    res_93_gfp.to_csv('results/psm_KO93_vs_GFP.csv', index=False)
-    res_95_gfp.to_csv('results/psm_KO95_vs_GFP.csv', index=False)
-    res_dko_gfp.to_csv('results/psm_DKO_vs_GFP.csv', index=False)
-
-    generate_figures(res_93_gfp, 'psm_KO93_vs_GFP')
-    generate_figures(res_95_gfp, 'psm_KO95_vs_GFP')
-    generate_figures(res_dko_gfp, 'psm_DKO_vs_GFP')
-
-
-def replot_psm():
-    res_93_gfp = pd.read_csv('results/psm_KO93_vs_GFP.csv')
-    res_95_gfp = pd.read_csv('results/psm_KO95_vs_GFP.csv')
-    res_dko_gfp = pd.read_csv('results/psm_DKO_vs_GFP.csv')
-
-    generate_figures(res_93_gfp, 'psm_KO93_vs_GFP')
-    generate_figures(res_95_gfp, 'psm_KO95_vs_GFP')
-    generate_figures(res_dko_gfp, 'psm_DKO_vs_GFP')

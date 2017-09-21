@@ -24,9 +24,9 @@ plot_data_quality <- function(df, filename='raw_quality.png') {
     mn <- mean(col, na.rm=T)
     md <- median(col)
     stdev <- sd(col, na.rm=T)
-    # 2.25% - 97.75% range (=4x stddev for normal)
+    ## 2.25% - 97.75% range (=4x stddev for normal)
     # qt = quantile(col, probs=c(0.02275013, 1-0.02275013))
-    # (1x stddev for normal)
+    ## (1x stddev for normal)
     qt = quantile(col, probs=c(0.3085375, 1-0.3085375))
     iq = (qt[2] - qt[1])
 
@@ -34,12 +34,12 @@ plot_data_quality <- function(df, filename='raw_quality.png') {
 
     # Allow a total of 15 stddevs of x-axis in the graph
     bounds <- c(qt[1] - 7*iq, qt[2] + 7*iq)
-    # We want 50 bins between 2% - 98% range
+    # We want 50 bins total in the histogram
     bins <- seq(bounds[1], bounds[2], (15*iq)/50)
     # Now add extreme breakpoints to bins to capture all data
     bins <- c(min(col), bins, max(col))
 
-    TXT_SCALE <- 2
+    TXT_SCALE <- 2  # Scale the axis labels
     h <- hist(col, breaks=bins, include.lowest=TRUE, xlim=bounds, freq=TRUE,
          main=name, sub=subtitle, xlab="",
          cex.lab=TXT_SCALE, cex.axis=TXT_SCALE, cex.main=TXT_SCALE, cex.sub=TXT_SCALE)
@@ -60,15 +60,19 @@ plot_data_quality <- function(df, filename='raw_quality.png') {
 # Will filter by complete cases in data cols
 clean_data <- function(data, data_cols, med_norm=TRUE, log=TRUE, 
                        group_genes=FALSE, plot_filename=NULL) {
+  # Log data 
+  if (log) {
+    data[,data_cols] <- log2(data[,data_cols])
+  }
+
+  # Set any Inf or -Inf values to NA
+  data[,data_cols] <- do.call(data.frame,
+        lapply(data[,data_cols], function(x) replace(x, is.infinite(x),NA)))
   # Filter to rows where all data cols are complete
   incomplete <- !complete.cases(data[,data_cols])
   if (any(incomplete)) {
     warning(paste('Dropping', sum(incomplete), 'rows with NA values'))
     data <- data[!incomplete,]
-  }
-
-  if (log) {
-    data[,data_cols] <- log2(data[,data_cols])
   }
 
   if (group_genes) {
@@ -78,7 +82,6 @@ clean_data <- function(data, data_cols, med_norm=TRUE, log=TRUE,
   }
 
   if (!is.null(plot_filename)) {
-    print(head(data[,data_cols]))
     plot_data_quality(data[,data_cols], plot_filename)
   }
 
@@ -201,7 +204,7 @@ read_protein_aug <- function(filename='protein_raw.csv') {
 }
 
 
-# TODO: Fix data file (extra line above for some reason?)
+# TODO: Fix data file (extra line below header row for some reason?)
 read_peptide_aug <- function(filename='peptide_raw.csv', med_norm=TRUE) {
   rel_cols <- c(
       # GFP
@@ -333,7 +336,7 @@ read_protein_march <- function() {
 
   # Reorder data so intensities are at front
   data <- data[,c(6:16,1:5)]
-  data <- clean_data(data, c(1:10), med_norm=F, log=T, group_genes=T,
+  data <- clean_data(data, c(1:10), med_norm=T, log=T, group_genes=T,
                      plot_filename='figures/raw_quality/Mar_protein_raw.png')
 
   return(data)
@@ -366,7 +369,7 @@ read_phosphos_march <- function() {
 
   # Reorder data so intensities are first
   data <- data[,c(11:21,1:7,10)]
-  data <- clean_data(data, c(1:10), med_norm=F, log=T, group_genes=F,
+  data <- clean_data(data, c(1:10), med_norm=T, log=T, group_genes=F,
                      plot_filename='figures/raw_quality/Mar_phospho_raw.png')
 
   return(data)
@@ -399,8 +402,59 @@ read_phosphos_sept <- function() {
 
   # Reorder data so intensities are first
   data <- data[,c(11:20,9,2:6,8)]
-  data <- clean_data(data, c(1:10), med_norm=F, log=T, group_genes=F,
+  data <- clean_data(data, c(1:10), med_norm=T, log=T, group_genes=F,
                      plot_filename='figures/raw_quality/Sept_phospho_raw.png')
 
   return(data)
+}
+
+
+read_phospho_tyr <- function() {
+  data <- read.csv('data/Tyr/phospho_raw.csv', na.strings = "")
+  colnames(data) <- c(
+        'reference',
+        'accession_number',
+        'uniprot',
+        'geneSymbol',
+        'entry_name',
+        'sites',
+        'phosphoresidues',
+        'motif',
+        'maxscore',
+        'sequence',
+        'KO93_A1',
+        'KO93_A2',
+        'KO93_A3',
+        'KO95_A1',
+        'KO95_A2',
+        'KO95_A3',
+        'KOSAP_A1',
+        'KOSAP_A2',
+        'CT_A1',
+        'CT_A2',
+        'na1',
+        'na2',
+        'na3',
+        'na4')
+
+  data <- data[,c(11:20,1:7,10)]
+  # Convert data columns to numeric (not sure why factors in first place)
+  for (col in colnames(data)[1:10]) {
+    data[,col] <- as.numeric(as.character(data[,col]))
+  }
+  data <- clean_data(data, c(1:10), med_norm=T, log=T, group_genes=F,
+                     plot_filename='figures/raw_quality/Tyr_phospho_raw.png')
+  return(data)
+}
+
+
+if (TRUE) {
+  write.csv(read_phospho_tyr(),
+            'data/Tyr/phospho.csv', row.names=FALSE)
+  write.csv(read_phosphos_march(),
+            'data/March_2017/phospho.csv', row.names=FALSE)
+  write.csv(read_protein_march(),
+            'data/March_2017/protein.csv', row.names=FALSE)
+  write.csv(read_phosphos_sept(),
+            'data/Sept_2017/phospho.csv', row.names=FALSE)
 }

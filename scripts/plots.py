@@ -4,6 +4,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+from scipy.stats.stats import pearsonr
+
 def plot_pvalue_dist(pvals, axes=None):
     """
     Pvals should be a Pandas dataframe
@@ -79,10 +81,11 @@ LABEL_COLS = [
         'ttest_PVal_med',
         'ttest_bypep'
 ]
-L2 = ['cyberT', 'modT_2samp', 't_test_1samp', 't_test_2samp']
+LABEL_COLS_PROT = ['cyberT', 'modT_2samp', 't_test_1samp', 't_test_2samp']
 LABEL_COLS_ADJ = [l + '_adj' for l in LABEL_COLS]
+LABEL_COLS_PROT_ADJ = [l + '_adj' for l in LABEL_COLS_PROT]
 def compare_measures(res, label_cols, label_cols2=None, title='', 
-                     count=True, equal=True, sharey=True, sharex=True):
+                     count=True, equal=True, sharey=True, sharex=True, corr=False):
     """ Generate scatterplots comparing pvals with each other
     """
     # TODO: for convenience, should check if integer locations
@@ -97,7 +100,7 @@ def compare_measures(res, label_cols, label_cols2=None, title='',
     elif 'n_pep' in res.columns:
         alpha = np.log2(res.n_pep) / np.max(np.log2(res.n_pep))
     else:
-        alpha = np.full((res.shape[0],), 1.0)
+        alpha = np.full((res.shape[0],), 0.25)
 
     for i in xrange(m):
         for j in xrange(n):
@@ -109,24 +112,34 @@ def compare_measures(res, label_cols, label_cols2=None, title='',
             if i > j:
                 # ax.axis('off')
                 continue
-            mask = (np.isfinite(res[label_cols[i]]) &
-                    np.isfinite(res[label_cols2[j]]))
+            if i == j:
+                # TODO fix this
+                # Plot histogram of data distribution instead of scatterplot
+                # ax.hist(res[label_cols[i]])
+                pass
+            x = res[label_cols2[j]].values
+            y = res[label_cols[i]].values
+            mask = (np.isfinite(x) & np.isfinite(y))
             val = np.sum(mask)
             # Set alpha correctly
-            colors = matplotlib.cm.Reds(np.arange(0, 1, 1./val))
+            colors = matplotlib.cm.Reds(np.arange(0, val, dtype=float) / val)
             # colors = np.zeros((n, 4))
             # colors[:,0] = 0.9  # Make red
             # colors[:,1] = 0.7 # Make red
             # colors[:,2] = 0.6 # Make red
             colors[:,-1] = alpha[mask]
-            ax.scatter(res[label_cols2[j]].values[mask],
-                       res[label_cols[i]].values[mask],
+            ax.scatter(x[mask],
+                       y[mask],
                        color=colors, lw=0)
             if count:
                 # Count number of significant
-                nsig = np.sum((res[label_cols2[j]].values[mask] <= 0.05) &
-                              (res[label_cols[i]].values[mask] <= 0.05))
+                nsig = np.sum((x[mask] <= 0.05) &
+                              (y[mask] <= 0.05))
                 ax.set_xlabel('%d sig' % nsig)
+            if corr:
+                # Find correlation
+                r,_ = pearsonr(x[mask], y[mask])
+                ax.set_xlabel(ax.xaxis.get_label_text() + (' r=%.3f' % r))
             if equal:
                 # Equalize axis scales
                 ax.axis('equal')
@@ -189,25 +202,59 @@ def generate_figures(res, label_cols=LABEL_COLS, filename='psm'):
     f.savefig('figures/%s_compare_adj.png' % filename, dpi=100)
 
 
-def compare_channel_replicates(data, group=True, title=''): 
-    """ data must have 'accession_number' column to aggregate by
+def compare_channel_replicates(data, group=True, title='', col_groups=None): 
+    """ 
+    Plot (ncols x ncols) grid of scatterplots comparing the measures in each column
+    data must have 'accession_number' column to aggregate by if group is True
+    col_groups is a list of name-value pairs to split the plot into several
+        saved figures, where name is the label of the group and value is a 
+        list of columns
+        OR one of 'Mar', 'Aug', 'Sep', 'Tyr'
+
     """
-    for name, cols in [
+    # Default column groups for each dataset
+    if col_groups is None:
+        col_groups = [('all', np.xrange(data.shape[1]))]
+    elif isinstance(col_groups, basestring):
+        if col_groups == 'Aug':
+            col_groups = [
             ('Control', ['GFP_A1', 'GFP_A2', 'GFP_B1', 'GFP_B2']),
             ('KO93',    ['KO93_A1','KO93_A2','KO93_B1','KO93_B2','KO93_B3']),
             ('KO95',    ['KO95_A1','KO93_A2','KO95_A3','KO95_B1','KO95_B2']),
             ('DKO',     ['DKO_A1', 'DKO_A2', 'DKO_B1', 'DKO_B2']),
-            ]:
+            ]
+        elif col_groups == 'Mar':
+            col_groups = [
+            ('Control', ['CKF_A1','CKF_A2','CKF_A3','CKF_A4']),
+            ('P25F', ['P25F_A1','P25F_A2','P25F_A3','P25F_A4','P25F_A5','P25F_A6'])
+            ]
+        elif col_groups == 'Sep':
+            col_groups = [
+            ('P25_EE', ['P25_EE_A1','P25_EE_A2','P25_EE_A3']),
+            ('EE', ['CT_EE_A1','CT_EE_A2','CT_EE_A3']),
+            ('P25', ['P25_HC_A1','P25_HC_A2']),
+            ('Control', ['CT_HC_A1','CT_HC_A2']),
+            ]
+        elif col_groups == 'Tyr':
+            col_groups = [
+            ('KO93', ['KO93_A1','KO93_A2','KO93_A3']),
+            ('KO95', ['KO95_A1','KO95_A2','KO95_A3']),
+            ('KOSAP', ['KOSAP_A1','KOSAP_A2']),
+            ('Control', ['CT_A1','CT_A2']),
+            ]
+
+    for name, cols in col_groups:
         if group:
             count = data.accession_number.groupby(data.accession_number).count()
             aggregated = data[cols].groupby(data.accession_number).mean()
             aggregated['n_pep'] = count
         else:
             aggregated = data
-        f = compare_measures(aggregated, cols, title)
+        f = compare_measures(aggregated, cols, title=title,
+                corr=True, count=False)
         f.set_size_inches(10, 10)
         f.tight_layout(rect=(0, 0, 1, 0.95))
-        f.savefig('figures/%s_channel_reps_%s.png' % (title, name), dpi=100)
+        f.savefig('figures/raw_quality/%s_channel_reps_%s.png' % (title, name), dpi=100)
 
 
 def intensity_psd_nonpsd(res, psd, ax=None):
