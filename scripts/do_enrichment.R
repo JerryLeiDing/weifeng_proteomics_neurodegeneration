@@ -19,8 +19,15 @@ find_overlap <- function(res, psd, alpha=0.05, use_col='cyberT_adj') {
 
   logp <- phyper(sig_psd, all_psd, all_seen - all_psd, sig, log.p=TRUE, lower.tail=FALSE)
 
-  up_proteins <- unique(res$accession_number[is_sig & is_up])
-  down_proteins <- unique(res$accession_number[is_sig & is_down])
+  up_proteins <- unique(as.character(res$accession_number[is_sig & is_up]))
+  down_proteins <- unique(as.character(res$accession_number[is_sig & is_down]))
+
+  up_proteins_symbol <- NULL
+  down_proteins_symbol <- NULL
+  if ('geneSymbol' %in% colnames(res)) {
+    up_proteins_symbol <- unique(as.character(res$geneSymbol[is_sig & is_up]))
+    down_proteins_symbol <- unique(as.character(res$geneSymbol[is_sig & is_down]))
+  }
 
   return(list(up_proteins_psd=up_proteins_psd,
               down_proteins_psd=down_proteins_psd,
@@ -31,7 +38,9 @@ find_overlap <- function(res, psd, alpha=0.05, use_col='cyberT_adj') {
               num_proteins_up_psd=nrow(up_proteins_psd),
               num_proteins_down=length(down_proteins),
               num_proteins_down_psd=nrow(down_proteins_psd), 
-              num_proteins_total=all_seen))
+              num_proteins_total=all_seen,
+              down_proteins_symbol=down_proteins_symbol,
+              up_proteins_symbol=up_proteins_symbol))
 }
 
 plot_venn <- function(overlap, name) {
@@ -78,22 +87,22 @@ convert_entrez <- function(gene_list, fromType='ACCNUM', filename=NULL) {
   if (!is.null(filename)) {
     write.table(entrez, paste("enrichment/", filename, sep=''), sep='\t', row.names=FALSE, quote=FALSE)
   }
-  return(entrez$ENTREZID[!duplicated(entrez$ACCNUM)])
+  return(entrez$ENTREZID[!duplicated(entrez[,fromType])])
 }
 
-go_enrich <- function(gene_list, ont="MF", is_entrez=FALSE) {
+go_enrich <- function(gene_list, ont="MF", is_entrez=FALSE, ...) {
   if (!is_entrez) {
-    entrez_genes <- convert_entrez(gene_list)
+    entrez_genes <- convert_entrez(gene_list, ...)
   } else {
     entrez_genes <- gene_list
   }
   return(enrichGO(gene=entrez_genes, OrgDb="org.Mm.eg.db", ont=ont, readable=TRUE))
 }
 
-go_group <- function(gene_list, ont="MF", level=3, is_entrez=FALSE) {
+go_group <- function(gene_list, ont="MF", level=3, is_entrez=FALSE, ...) {
   # Provide gene_list as list of 
   if (!is_entrez) {
-    entrez_genes <- convert_entrez(gene_list)
+    entrez_genes <- convert_entrez(gene_list,...)
   } else {
     entrez_genes <- gene_list
   }
@@ -124,6 +133,7 @@ filter_go_rankings_to <- function(enrich_result, level) {
 RUN_OVERLAP <- F
 RUN_CONVERT <- F
 RUN_ENRICH <- F
+RUN_GROUP <- T
 if (RUN_OVERLAP) {
   psd_overlap <- find_overlap(res_protein, psd, alpha=0.05, use_col='cyberT_adj')
   psd_overlap_strict <- 
@@ -131,35 +141,61 @@ if (RUN_OVERLAP) {
 }
 if (RUN_CONVERT) {
   # Convert gene names
-  # down_entrez_genes <- convert_entrez(
-  #     unique(psd_overlap$down_proteins),
-  # )
-  # up_entrez_genes <- convert_entrez(
-  #     unique(psd_overlap$up_proteins),
-  # )
+  down_entrez_genes <- convert_entrez(
+      unique(psd_overlap$down_proteins),
+  )
+  up_entrez_genes <- convert_entrez(
+      unique(psd_overlap$up_proteins),
+  )
+  down_entrez_genes_strict <- convert_entrez(
+      unique(psd_overlap_strict$down_proteins),
+  )
+  up_entrez_genes_strict <- convert_entrez(
+      unique(psd_overlap_strict$up_proteins),
+  )
 
-  down_entrez_genes_psd <- convert_entrez(
-      unique(psd_overlap$down_proteins_psd$accession_number),
-  )
-  up_entrez_genes_psd <- convert_entrez(
-      unique(psd_overlap$up_proteins_psd$accession_number),
-  )
-  down_entrez_genes_psd_strict <- convert_entrez(
-      unique(psd_overlap_strict$down_proteins_psd$accession_number),
-  )
-  up_entrez_genes_psd_strict <- convert_entrez(
-      unique(psd_overlap_strict$up_proteins_psd$accession_number),
-  )
+  # down_entrez_genes_psd <- convert_entrez(
+  #     unique(psd_overlap$down_proteins_psd$accession_number),
+  # )
+  # up_entrez_genes_psd <- convert_entrez(
+  #     unique(psd_overlap$up_proteins_psd$accession_number),
+  # )
+  # down_entrez_genes_psd_strict <- convert_entrez(
+  #     unique(psd_overlap_strict$down_proteins_psd$accession_number),
+  # )
+  # up_entrez_genes_psd_strict <- convert_entrez(
+  #     unique(psd_overlap_strict$up_proteins_psd$accession_number),
+  # )
 }
 
 if (RUN_ENRICH) {
   # Do enrichment
   # enrich_down <- go_enrich(down_entrez_genes, is_entrez=TRUE)
   # enrich_up <- go_enrich(up_entrez_genes, is_entrez=TRUE)
-  enrich_down_psd <- go_enrich(down_entrez_genes_psd, is_entrez=TRUE)
-  enrich_up_psd <- go_enrich(up_entrez_genes_psd, is_entrez=TRUE)
-  enrich_down_psd_strict <- go_enrich(down_entrez_genes_psd_strict, is_entrez=TRUE)
-  enrich_up_psd_strict <- go_enrich(up_entrez_genes_psd_strict, is_entrez=TRUE)
+  # enrich_down_strict <- go_enrich(down_entrez_genes_strict, is_entrez=TRUE)
+  # enrich_up_strict <- go_enrich(up_entrez_genes_strict, is_entrez=TRUE)
+
+  # Do enrichment with geneSymbols
+  enrich_down <- go_enrich(psd_overlap$down_proteins_symbol, fromType='SYMBOL')
+  enrich_up <- go_enrich(psd_overlap$up_proteins_symbol, fromType='SYMBOL')
+  enrich_down_strict <- go_enrich(psd_overlap_strict$down_proteins_symbol, fromType='SYMBOL')
+  enrich_up_strict <- go_enrich(psd_overlap_strict$up_proteins_symbol, fromType='SYMBOL')
+
+  # Do enrichment for psd overlap
+  # enrich_down_psd <- go_enrich(down_entrez_genes_psd, is_entrez=TRUE)
+  # enrich_up_psd <- go_enrich(up_entrez_genes_psd, is_entrez=TRUE)
+  # enrich_down_psd_strict <- go_enrich(down_entrez_genes_psd_strict, is_entrez=TRUE)
+  # enrich_up_psd_strict <- go_enrich(up_entrez_genes_psd_strict, is_entrez=TRUE)
+}
+
+if (RUN_GROUP) {
+  # Do grouping with GeneSymbols
+  GO_LVL <- 1
+  group_down <- go_group(psd_overlap$down_proteins_symbol, level=GO_LVL, fromType='SYMBOL')
+  # group_up <- go_group(psd_overlap$up_proteins_symbol, level=GO_LVL, fromType='SYMBOL')
+  # group_down_strict <- go_group(psd_overlap_strict$down_proteins_symbol, level=GO_LVL, fromType='SYMBOL')
+  # group_up_strict <- go_group(psd_overlap_strict$up_proteins_symbol, level=GO_LVL, fromType='SYMBOL')
+
 }
 
 # ngkd_down_enrich <- go_enrich(unique(

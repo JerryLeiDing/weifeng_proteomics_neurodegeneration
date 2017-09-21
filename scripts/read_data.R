@@ -1,4 +1,87 @@
 library(plyr)
+library(ggplot2)
+
+# Plots the distribution of every column in the df
+# Calculates mean, std dev, and interquartile range
+plot_data_quality <- function(df, filename='raw_quality.png') {
+  if (is.null(dim(df))) {
+    # Invalid input
+    stop("Invalid input to `plot_data_quality`: no dimensions")
+  }
+  nrows = ceiling(dim(df)[2]/2)
+
+  width = 1080
+  height = 480 * nrows
+  # Save to file
+  png(filename, width=width, height=height)
+  # Two columns of subplots
+  par(mfrow=c(nrows, 2))
+
+  for (name in colnames(df)) {
+    col <- df[,name]
+
+    # Calculate mean, std dev, and interquartile range
+    mn <- mean(col)
+    md <- median(col)
+    stdev <- sd(col)
+    # 2.25% - 97.75% range (=4x stddev for normal)
+    # qt = quantile(col, probs=c(0.02275013, 1-0.02275013))
+    # (1x stddev for normal)
+    qt = quantile(col, probs=c(0.3085375, 1-0.3085375))
+    iq = (qt[2] - qt[1])
+
+    subtitle <- sprintf("Mean=%.3f, Std=%.3f, Median=%.3f, IQ=%.3f", mn, stdev, md, iq)
+
+    # Allow a total of 15 stddevs of x-axis in the graph
+    bounds <- c(qt[1] - 7*iq, qt[2] + 7*iq)
+    # We want 50 bins between 2% - 98% range
+    bins <- seq(bounds[1], bounds[2], (15*iq)/50)
+    # Now add extreme breakpoints to bins to capture all data
+    bins <- c(min(col), bins, max(col))
+
+    TXT_SCALE <- 2
+    h <- hist(col, breaks=bins, include.lowest=TRUE, xlim=bounds, freq=TRUE,
+         main=name, sub=subtitle, xlab="",
+         cex.lab=TXT_SCALE, cex.axis=TXT_SCALE, cex.main=TXT_SCALE, cex.sub=TXT_SCALE)
+
+    # And plot a normal fit
+    scale <- h$counts / h$density
+    curve(dnorm(x, md, qt[2] - qt[1])*scale[25],
+          add=TRUE,
+          col='darkblue',
+          lwd=2)
+  }
+  dev.off()
+}
+
+
+# Encapsulates the median normalization, gene grouping, and plotting functions
+# data_cols: indices or colnames corresponding to data columns
+# Will filter by complete cases in data cols
+clean_data <- function(data, data_cols, med_norm=TRUE, log=TRUE, 
+                       group_genes=FALSE, plot_filename=NULL) {
+  if (log) {
+    data[,data_cols] <- log2(data[,data_cols])
+  }
+
+  if (group_genes) {
+    # Then drop duplicate geneSymbols
+    # TODO: should this be median?
+    data <- data[!duplicated(data$geneSymbol),]
+  }
+
+  if (!is.null(plot_filename)) {
+    plot_data_quality(data[,data_cols], plot_filename)
+  }
+
+  if (med_norm) {
+    # Median normalize each ratio column
+    medians = unlist(lapply(data[,data_cols], median))
+    data[,data_cols] <- sweep(data[,data_cols], 2, medians, '-')
+  }
+
+  return(data)
+}
 
 read_psm <- function(filename='psm_raw.csv', med_norm=TRUE) {
   rel_cols = c(
@@ -232,5 +315,42 @@ read_protein_raw <- function(filename, group_genes=TRUE, med_norm=TRUE) {
     medians = unlist(lapply(data[,1:18], median))
     data[,1:18] <- sweep(data[,1:18], 2, medians, '-')
   }
+  return(data)
+}
+
+
+read_protein_march <- function(plot=TRUE, group_genes=TRUE, med_norm=FALSE) {
+  data <- read.csv('data/March_2017/proteins_raw.csv')
+
+  colnames(data) <- c(
+        'reference',
+        'accession_number',
+        'uniprot',
+        'geneSymbol',
+        'entry_name',
+        'P25F_A1',
+        'P25F_A2',
+        'P25F_A3',
+        'P25F_A4',
+        'P25F_A5',
+        'P25F_A6',
+        'CKF_A1',
+        'CKF_A2',
+        'CKF_A3',
+        'CKF_A4',
+        'ratio')
+
+  # TODO: if necessary, dummy columns for data which is not included
+
+  # Reorder data so intensities are at front
+  data <- data[,c(6:16,1:5)]
+  # Log2 intensity data
+  data[,1:10] <- log2(data[,1:10])
+
+  if (any(!complete.cases(data))) {
+    warning(paste('Dropping', sum(!complete.cases(data)), 'rows with NA'))
+    data <- data[complete.cases(data),]
+  }
+
   return(data)
 }

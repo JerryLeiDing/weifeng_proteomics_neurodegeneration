@@ -76,7 +76,7 @@ def run_protein(data, comp1, comp2, plex='both'):
     return pd.concat((c1, c2, data[keep_cols], pvals), axis=1)
 
 
-
+# The following code is specifically for the 2x2 ANOVA in the August dataset
 # NOTE: don't change me unless you also change _make_design_matrix(!)
 col_order = [
        u'GFP_A1', u'GFP_A2', u'GFP_B1', u'GFP_B2', u'KO95_A1', u'KO95_A2',
@@ -517,7 +517,7 @@ def find_uncorrelated_gfp_proteins(normed):
     return normed[is_uncorr]
 
 
-### END TEMPORARY CODE
+### END ANOVA CODE
 
 def run_psm(data, comp1, comp2, plex='both'):
     """
