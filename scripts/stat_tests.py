@@ -19,8 +19,8 @@ from statsmodels.tools import add_constant
 
 # Setup R environment
 pandas2ri.activate()
-r['source']('modT.r')
-r['source']('bayesreg.R')
+r['source']('scripts/modT.r')
+r['source']('scripts/bayesreg.R')
 # INSTRUCTIONS FOR USE
 # Call functions r['modT_test'], r['bayesT'], r['find_protein_medians']
 # r['modT_test'](data, "placeholder", dframe=TRUE, data.col=[DATA COLS])

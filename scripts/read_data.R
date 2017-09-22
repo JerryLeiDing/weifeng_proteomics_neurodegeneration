@@ -111,7 +111,7 @@ read_psm <- function(filename='psm_raw.csv', med_norm=TRUE) {
   # TODO: use clean_data instead of existing functions 
   if (FALSE) {
     data <- clean_data(data, c(1:9), med_norm=T, log=T, group_genes=F,
-                       plot_filename='figures/raw_quality/Aug_psm.png')
+                       plot_filename='figures/Aug/raw_quality/Aug_psm.png')
   }
 
   # Log the value cols
@@ -198,7 +198,7 @@ read_protein_aug <- function(filename='protein_raw.csv') {
   # So we keep the more abundant protein when grouping genes
   data <- data[order(- data$numSpectra_A - data$numSpectra_B),]
   data <- clean_data(data, c(1:18), med_norm=T, log=F, group_genes=T,
-                     plot_filename='figures/raw_quality/Aug_protein.png')
+                     plot_filename='figures/Aug/raw_quality/Aug_protein.png')
 
   return(data)
 }
@@ -256,7 +256,7 @@ read_peptide_aug <- function(filename='peptide_raw.csv', med_norm=TRUE) {
   )
 
   data <- clean_data(data, c(1:18), med_norm=T, log=F, group_genes=F,
-                     plot_filename='figures/raw_quality/Aug_peptides.png')
+                     plot_filename='figures/Aug/raw_quality/Aug_peptides.png')
 
   return(data)
 }
@@ -306,7 +306,7 @@ read_protein_raw_aug <- function() {
 
   data <- data[order(- data$numSpectra_A - data$numSpectra_B),]
   data <- clean_data(data, c(1:20), med_norm=T, log=F, group_genes=T,
-                     plot_filename='figures/raw_quality/Aug_protein_nolog.png')
+                     plot_filename='figures/Aug/raw_quality/Aug_protein_nolog.png')
   return(data)
 }
 
@@ -337,7 +337,7 @@ read_protein_march <- function() {
   # Reorder data so intensities are at front
   data <- data[,c(6:16,1:5)]
   data <- clean_data(data, c(1:10), med_norm=T, log=T, group_genes=T,
-                     plot_filename='figures/raw_quality/Mar_protein_raw.png')
+                     plot_filename='figures/Mar/raw_quality/Mar_protein_raw.png')
 
   return(data)
 }
@@ -370,7 +370,7 @@ read_phosphos_march <- function() {
   # Reorder data so intensities are first
   data <- data[,c(11:21,1:7,10)]
   data <- clean_data(data, c(1:10), med_norm=T, log=T, group_genes=F,
-                     plot_filename='figures/raw_quality/Mar_phospho_raw.png')
+                     plot_filename='figures/Mar/raw_quality/Mar_phospho_raw.png')
 
   return(data)
 }
@@ -403,7 +403,7 @@ read_phosphos_sept <- function() {
   # Reorder data so intensities are first
   data <- data[,c(11:20,9,2:6,8)]
   data <- clean_data(data, c(1:10), med_norm=T, log=T, group_genes=F,
-                     plot_filename='figures/raw_quality/Sept_phospho_raw.png')
+                     plot_filename='figures/Sep/raw_quality/Sept_phospho_raw.png')
 
   return(data)
 }
@@ -443,12 +443,12 @@ read_phospho_tyr <- function() {
     data[,col] <- as.numeric(as.character(data[,col]))
   }
   data <- clean_data(data, c(1:10), med_norm=T, log=T, group_genes=F,
-                     plot_filename='figures/raw_quality/Tyr_phospho_raw.png')
+                     plot_filename='figures/Tyr/raw_quality/Tyr_phospho_raw.png')
   return(data)
 }
 
 
-if (TRUE) {
+if (FALSE) {
   write.csv(read_phospho_tyr(),
             'data/Tyr/phospho.csv', row.names=FALSE)
   write.csv(read_phosphos_march(),

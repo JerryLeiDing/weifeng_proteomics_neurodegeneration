@@ -202,7 +202,7 @@ def generate_figures(res, label_cols=LABEL_COLS, filename='psm'):
     f.savefig('figures/%s_compare_adj.png' % filename, dpi=100)
 
 
-def compare_channel_replicates(data, group=True, title='', col_groups=None): 
+def compare_channel_replicates(data, group=True, title='', col_groups=None, cross=False): 
     """ 
     Plot (ncols x ncols) grid of scatterplots comparing the measures in each column
     data must have 'accession_number' column to aggregate by if group is True
@@ -210,6 +210,8 @@ def compare_channel_replicates(data, group=True, title='', col_groups=None):
         saved figures, where name is the label of the group and value is a 
         list of columns
         OR one of 'Mar', 'Aug', 'Sep', 'Tyr'
+    cross [bool] - designates whether to include one panel with cross of all channels
+        Note that cross will not with with group
 
     """
     # Default column groups for each dataset
@@ -223,11 +225,6 @@ def compare_channel_replicates(data, group=True, title='', col_groups=None):
             ('KO95',    ['KO95_A1','KO93_A2','KO95_A3','KO95_B1','KO95_B2']),
             ('DKO',     ['DKO_A1', 'DKO_A2', 'DKO_B1', 'DKO_B2']),
             ]
-        elif col_groups == 'Mar':
-            col_groups = [
-            ('Control', ['CKF_A1','CKF_A2','CKF_A3','CKF_A4']),
-            ('P25F', ['P25F_A1','P25F_A2','P25F_A3','P25F_A4','P25F_A5','P25F_A6'])
-            ]
         elif col_groups == 'Sep':
             col_groups = [
             ('P25_EE', ['P25_EE_A1','P25_EE_A2','P25_EE_A3']),
@@ -235,26 +232,30 @@ def compare_channel_replicates(data, group=True, title='', col_groups=None):
             ('P25', ['P25_HC_A1','P25_HC_A2']),
             ('Control', ['CT_HC_A1','CT_HC_A2']),
             ]
-        elif col_groups == 'Tyr':
-            col_groups = [
-            ('KO93', ['KO93_A1','KO93_A2','KO93_A3']),
-            ('KO95', ['KO95_A1','KO95_A2','KO95_A3']),
-            ('KOSAP', ['KOSAP_A1','KOSAP_A2']),
-            ('Control', ['CT_A1','CT_A2']),
-            ]
+    
+    # Obtain all named columns
+    all_cols = sum([g[1] for g in col_groups] ,[])
+    if group:
+        count = data.accession_number.groupby(data.accession_number).count()
+        aggregated = data[all_cols].groupby(data.accession_number).mean()
+        aggregated['n_pep'] = count
+    else:
+        aggregated = data
 
     for name, cols in col_groups:
-        if group:
-            count = data.accession_number.groupby(data.accession_number).count()
-            aggregated = data[cols].groupby(data.accession_number).mean()
-            aggregated['n_pep'] = count
-        else:
-            aggregated = data
         f = compare_measures(aggregated, cols, title=title,
                 corr=True, count=False)
         f.set_size_inches(10, 10)
         f.tight_layout(rect=(0, 0, 1, 0.95))
-        f.savefig('figures/raw_quality/%s_channel_reps_%s.png' % (title, name), dpi=100)
+        f.savefig('figures/%s_channel_reps_%s.png' % (title, name), dpi=100)
+    
+    # TODO separate aggregation code so cross_groups works with agg
+    if cross:
+        f = compare_measures(aggregated, all_cols, title="ALL",
+                corr=True, count=False)
+        f.set_size_inches(2*len(all_cols), 2*len(all_cols))
+        f.tight_layout(rect=(0, 0, 1, 0.95))
+        f.savefig('figures/%s_channel_reps_ALL.png' % (title,), dpi=100)
 
 
 def intensity_psd_nonpsd(res, psd, ax=None):

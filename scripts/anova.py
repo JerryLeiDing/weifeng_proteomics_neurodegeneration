@@ -96,7 +96,6 @@ def anova_sept(df):
             'P25_HC_A1','P25_HC_A2',
             'CT_HC_A1','CT_HC_A2'
             ]
-    data = df[columns]
     # TODO
     # Design matrix with each column as coefficient
     design = pd.DataFrame.from_items([
@@ -105,8 +104,27 @@ def anova_sept(df):
         ('P25', [1,1,1,0,0,0,1,1,0,0]),
         ('EnrichxP25', [1,1,1,0,0,0,0,0,0,0])
         ])
-    coefs = list(design.columns)
+    return anova_modt(df, columns, design)
 
+def anova_modt(df, columns, design):
+    """ Runs ANOVA on the subset of df defined by columns with the specified design matrix, using the moderated T linear model.
+
+    Args:
+        df (Pandas DataFrame): DataFrame with one column per measurement, rows=proteins
+        columns (list(columns)): list of column names in df which have data
+        design (Pandas DataFrame)): design matrix (see limma documentation for details)
+            Note that the columns names of design are the returned coefficient names
+
+    Returns:
+        (res_df, result)
+        res_df (Pandas DataFrame): DataFrame with one row per protein  
+            - Same order as df
+            - One column for each best fit coefficient
+            - Has columns 'F_<COEF>' and 'PVal_<COEF>' for each coefficient
+        result (R object)
+    """
+    coefs = list(design.columns)
+    data = df[columns]
     # Note that result is an R object
     # We can't do much with it directly except call topTable
     result = r['moderated.t'](data, design=design)
@@ -115,7 +133,7 @@ def anova_sept(df):
     res_coef = pandas2ri.ri2py(r['topTable'](
             result,
             number=data.shape[0],
-            sort_by='none')).iloc[:,:len(coefs)]
+            sort_by='none')).iloc[:,:len(coefs)+3]
     # F-test for significance for terms OTHER than intercept and PlexB
     # Do this iteratively and obtain a p-value and F-value for every coefficient
     coefs.remove('Intercept')
@@ -132,22 +150,69 @@ def anova_sept(df):
                 result,
                 coef=c,
                 number=data.shape[0],
-                sort_by='none'))[['t', 'P.Value']]
+                sort_by='none'))[['t', 'P.Value']].values
     # Now bind together everything into one df
-    aux_data = (
-            df[['accession_number', 'geneSymbol', 'entry_name']].
-            reset_index(drop=True))
+    aux_data = df.drop(columns, axis=1).reset_index(drop=True)
     data.reset_index(drop=True, inplace=True)
     res_f.reset_index(drop=True, inplace=True)
     res_coef.reset_index(drop=True, inplace=True)
     res_df = pd.concat((data, res_coef, res_f, aux_data), axis=1)
-    # Check for phosphopeptide columns, add if present
-    # TODO
-    for pcol in ['']:
-        # Check if pcol in df, if so add it to res_df as well
-        pass
     return res_df, result
 
+
+def anova_noreg(df, columns, design):
+    """ Runs ANOVA on the subset of df defined by columns with the specified design matrix
+
+    Args:
+        df (Pandas DataFrame): DataFrame with one column per measurement, rows=proteins
+        columns (list(columns)): list of column names in df which have data
+        design (Pandas DataFrame)): design matrix (see limma documentation for details)
+            Note that the columns names of design are the returned coefficient names
+
+    Returns:
+        (res_df, result)
+        res_df (Pandas DataFrame): DataFrame with one row per protein  
+            - Same order as df
+            - One column for each best fit coefficient
+            - Has columns 'F_<COEF>' and 'PVal_<COEF>' for each coefficient
+        result (R object)
+    """
+    # Set up design, coefficients, and subset of data
+    data = df[columns]
+    coefs = list(design.columns)
+    # Make copy of coefs and remove intercept
+    coefs_no_intercept = list(coefs)
+    coefs_no_intercept.remove('Intercept')
+
+    # Create mapping of coefficients to F and PVal columns
+    coef_col_map = {c: ['F_'+c, 'PVal_'+c] for c in coefs_no_intercept}
+    result_colnames = coefs + [y for x in coef_col_map.values() for y in x]
+    # Create empty result df
+    result = pd.DataFrame(
+            index=np.arange(data.shape[0]),
+            columns=result_colnames,
+            dtype=float)
+    # Make copy of design dataframe and add a column
+    for_anova = design.copy()
+    # Now for each row in data, run ANOVA separately
+    for i in xrange(data.shape[0]):
+        if i % 100 == 0:
+            print i
+        for_anova['Y'] = data.iloc[i].values.astype(float)
+        fit = ols('Y ~ ' + ' + '.join(coefs_no_intercept), for_anova).fit()
+        # Set coefficients
+        result.iloc[i][coefs] = fit.params.values
+        # Extract ANOVA p-values and F-values
+        anova_res = sm.stats.anova_lm(fit, typ=2)
+        # Map to correct result columns
+        for c in anova_res.index:
+            if c in coef_col_map:
+                result.iloc[i][coef_col_map[c]]= anova_res.loc[c][-2:].values
+    # Now bind together everything into one df
+    aux_data = df.drop(columns, axis=1).reset_index(drop=True)
+    data.reset_index(drop=True, inplace=True)
+    res_df = pd.concat((data, result, aux_data), axis=1)
+    return res_df
 
 # The following code is specifically for the 2x2 ANOVA in the August dataset
 # NOTE: don't change me unless you also change _make_design_matrix(!)
@@ -218,7 +283,7 @@ def _make_design_matrix(samples, ko93, ko95, interact, plexb_interact):
     return pd.DataFrame.from_items(zip(coef_labels, design_cols))
 
 
-def anova_general(df, ko93=True, ko95=True, interact=True, plexb_interact=False):
+def anova_aug(df, ko93=True, ko95=True, interact=True, plexb_interact=False):
     # TODO documentation
     # Mention that blocking term is additive
     
@@ -274,7 +339,7 @@ def anova_general(df, ko93=True, ko95=True, interact=True, plexb_interact=False)
     return res_df, result
 
 
-def anova_noreg(df, ko93=True, ko95=True, interact=True, plexb_interact=True):
+def anova_noreg_aug(df, ko93=True, ko95=True, interact=True, plexb_interact=True):
     # TODO documentation
     # Mention that blocking term is additive
     
