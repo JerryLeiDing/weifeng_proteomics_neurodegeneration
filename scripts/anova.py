@@ -84,28 +84,6 @@ def run_protein(data, comp1, comp2, plex='both'):
     return pd.concat((c1, c2, data[keep_cols], pvals), axis=1)
 
 
-def anova_sept(df):
-    """
-    Runs 2-way ANOVA on September dataset
-    """
-
-    # Set up design, coefficients, and subset of data
-    columns = [
-            'P25_EE_A1','P25_EE_A2','P25_EE_A3',
-            'CT_EE_A1','CT_EE_A2','CT_EE_A3',
-            'P25_HC_A1','P25_HC_A2',
-            'CT_HC_A1','CT_HC_A2'
-            ]
-    # TODO
-    # Design matrix with each column as coefficient
-    design = pd.DataFrame.from_items([
-        ('Intercept', np.ones(len(columns))),
-        ('EnrichedEnvironment', [1,1,1,1,1,1,0,0,0,0]),
-        ('P25', [1,1,1,0,0,0,1,1,0,0]),
-        ('EnrichxP25', [1,1,1,0,0,0,0,0,0,0])
-        ])
-    return anova_modt(df, columns, design)
-
 def anova_modt(df, columns, design):
     """ Runs ANOVA on the subset of df defined by columns with the specified design matrix, using the moderated T linear model.
 

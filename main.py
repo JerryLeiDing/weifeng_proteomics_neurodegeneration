@@ -21,6 +21,34 @@ from scripts.plots import *
 #   Make abstract class: abstract methods include init, stat_tests, plot_quality???
 #   Filename string and docstring
 
+
+class RunAug:
+    """ Class to encapsulate the August dataset and associated procedures"""
+    data_cols = [u'GFP_A1', u'GFP_A2', u'GFP_B1', u'GFP_B2',
+                 u'KO95_A1', u'KO95_A2', u'KO95_A3', u'KO95_B1', u'KO95_B2',
+                 u'KO93_A1', u'KO93_A2', u'KO93_B1', u'KO93_B2', u'KO93_B3',
+                 u'DKO_A1', u'DKO_A2', u'DKO_B1', u'DKO_B2'
+                ]
+    groups = [
+            ('Control', ['GFP_A1', 'GFP_A2', 'GFP_B1', 'GFP_B2']),
+            ('KO93',    ['KO93_A1','KO93_A2','KO93_B1','KO93_B2','KO93_B3']),
+            ('KO95',    ['KO95_A1','KO93_A2','KO95_A3','KO95_B1','KO95_B2']),
+            ('DKO',     ['DKO_A1', 'DKO_A2', 'DKO_B1', 'DKO_B2']),
+            ]
+    valid_comparisons = [('KO93', 'GFP'), ('KO95', 'GFP'), ('DKO', 'GFP')]
+    protein_results = dict.fromkeys(valid_comparisons, None)
+    phospho_results = dict.fromkeys(valid_comparisons, None)
+
+    def __init__(self):
+        raise ValueError("Not yet implemented")
+    # TODO finish this class
+    # This needs to
+    #   (a) read phosphosites, normalize to protein level
+    #   (b) Pick which protein-level method to use
+    #   (c) Control out PlexB
+    #   (d) Run 2-way ANOVA using custom interface for multiple (this may actually obviate the need for the PlexB control???
+
+
 class RunMarch:
     """ Class to encapsulate the March dataset and associated procedures """
     data_cols = ['CKF_A1','CKF_A2','CKF_A3','CKF_A4',
@@ -33,6 +61,8 @@ class RunMarch:
     valid_comparisons = [('P25F', 'CKF')]
     protein_results = dict.fromkeys(valid_comparisons, None)
     phospho_results = dict.fromkeys(valid_comparisons, None)
+    # NOTE: toggle removal of uncorrelated columns
+    DROP_UNCORR = True
 
     def __init__(self):
         self.protein = pd.read_csv('data/March_2017/protein.csv')
@@ -54,8 +84,9 @@ class RunMarch:
         self.phospho_norm = self.phospho_nonorm.copy()
         self.phospho_norm.iloc[:,:10] = norm_values
 
-        # TODO: save quality figures to plot
+        # todo: save quality figures to plot for normalized psites
         # Using clean_data + ri2py
+
 
 
     def plot_quality(self):
@@ -77,8 +108,25 @@ class RunMarch:
         if comparison not in self.valid_comparisons:
             raise ValueError("Invalid comparison: see self.valid_comparison")
 
-        prot_res = run_protein(self.protein, comparison[0], comparison[1])
-        phos_res = run_protein(self.phospho_norm, comparison[0], comparison[1])
+        if (self.DROP_UNCORR):
+            # NOTE: drop non-correlated columns temporarily
+            print "#######"
+            print "WARNING: Dropping some non-correlated columns"
+            print "         Protein - P25F_A1"
+            print "         Phospho - CKF_A4, P25F_A1, P25F_A2, P25F_A6"
+            print "Change me back when normalization issues are solved"
+            print "#######"
+            prot_res = run_protein(
+                    self.protein.drop('P25F_A1', inplace=False, axis=1),
+                    comparison[0], comparison[1])
+            phos_res = run_protein(
+                    self.phospho_norm.drop(['CKF_A4', 'P25F_A1', 'P25F_A2', 'P25F_A6'],
+                        inplace=False, axis=1),
+                    comparison[0], comparison[1])
+        else:
+            # ORIGINAL
+            prot_res = run_protein(self.protein, comparison[0], comparison[1])
+            phos_res = run_protein(self.phospho_norm, comparison[0], comparison[1])
 
         self.protein_results[comparison] = prot_res
         self.phospho_results[comparison] = phos_res
@@ -86,20 +134,28 @@ class RunMarch:
         return (prot_res, phos_res)
 
     def do_all_stat_tests(self):
-        for comp in self.valid_comparison:
+        for comp in self.valid_comparisons:
             self.do_stat_test(comp)
 
     def plot_results(self):
         for (k,v) in self.protein_results.iteritems():
             if v is not None:
-                generate_figures(v, LABEL_COLS_PROT,
-                        filename='Mar/Mar_total_prot_%s_x_%s' % k)
+                if self.DROP_UNCORR:
+                    generate_figures(v, LABEL_COLS_PROT,
+                            filename='Mar/Mar_total_prot_%s_x_%s_DROP_UNCORR' % k)
+                else:
+                    generate_figures(v, LABEL_COLS_PROT,
+                            filename='Mar/Mar_total_prot_%s_x_%s' % k)
             else:
                 print "%s vs %s skipped in March figure gen" % comparison
         for (k,v) in self.phospho_results.iteritems():
             if v is not None:
-                generate_figures(v, LABEL_COLS_PROT,
-                        filename='Mar/Mar_phospho_%s_x_%s' % k)
+                if self.DROP_UNCORR:
+                    generate_figures(v, LABEL_COLS_PROT,
+                            filename='Mar/Mar_phospho_%s_x_%s_DROP_UNCORR' % k)
+                else:
+                    generate_figures(v, LABEL_COLS_PROT,
+                            filename='Mar/Mar_phospho_%s_x_%s' % k)
             else:
                 print "%s vs %s skipped in March figure gen" % comparison
 
@@ -107,25 +163,117 @@ class RunMarch:
     def write_results(self):
         for (k,v) in self.protein_results.iteritems():
             if v is not None:
-                v.to_csv('./results/Mar/Mar_protein_%s_x_%s.csv', index=False)
+                if self.DROP_UNCORR:
+                    v.to_csv('./results/Mar/Mar_protein_%s_x_%s_DROP_UNCORR.csv' % k, index=False)
+                else:
+                    v.to_csv('./results/Mar/Mar_protein_%s_x_%s.csv' % k, index=False)
             else:
-                print "%s vs %s skipped in March results saving" % comparison
+                print "%s vs %s skipped in March results saving" % k
         for (k,v) in self.phospho_results.iteritems():
             if v is not None:
-                v.to_csv('./results/Mar/Mar_phospho_%s_x_%s.csv', index=False)
+                if self.DROP_UNCORR:
+                    v.to_csv('./results/Mar/Mar_phospho_%s_x_%s_DROP_UNCORR.csv' % k, index=False)
+                else:
+                    v.to_csv('./results/Mar/Mar_phospho_%s_x_%s.csv' % k, index=False)
             else:
-                print "%s vs %s skipped in March results saving" % comparison
+                print "%s vs %s skipped in March results saving" % k
 
 
-class RunAug:
-    """ Class to encapsulate the August dataset and associated procedures"""
-    data_cols = [u'GFP_A1', u'GFP_A2', u'GFP_B1', u'GFP_B2',
-                 u'KO95_A1', u'KO95_A2', u'KO95_A3', u'KO95_B1', u'KO95_B2', 
-                 u'KO93_A1', u'KO93_A2', u'KO93_B1', u'KO93_B2', u'KO93_B3', 
-                 u'DKO_A1', u'DKO_A2', u'DKO_B1', u'DKO_B2'       
-                ]      
-    # TODO finish this class
+class RunSept:
+    """ Class to encapsulate the Sept dataset and associated procedures """
+    data_cols = ['P25xEE_A1','P25xEE_A2','P25xEE_A3',
+                 'EE_A1','EE_A2','EE_A3',
+                 'P25_A1','P25_A2',
+                 'CT_A1','CT_A2']
+    groups = [
+            ('P25_EE', ['P25xEE_A1','P25xEE_A2','P25xEE_A3']),
+            ('EE', ['EE_A1','EE_A2','EE_A3']),
+            ('P25', ['P25_A1','P25_A2']),
+            ('Control', ['CT_A1','CT_A2']),
+            ]
+    # List of (str, str) pairs which define all valid pairwise comparisons
+    valid_comparisons = [('P25xEE', 'CT'), ('EE', 'CT'), ('P25', 'CT')]
+    protein_results = dict.fromkeys(valid_comparisons, None)
+    phospho_results = dict.fromkeys(valid_comparisons, None)
 
+    def __init__(self):
+        self.phospho_norm = pd.read_csv('data/Sept_2017/phospho.csv')
+
+
+    def plot_quality(self):
+        """ Plots correlation for protein, phospho, and normalized phospho
+            Saved in 'plots/Sep/raw_quality/Sep_TYPE_channel_reps_GROUP.png"""
+        compare_channel_replicates(
+                self.phospho_norm, group=False, cross=True,
+                title='Sep/raw_quality/Sep_phospho_norm', col_groups=self.groups)
+
+    def do_all_stat_tests(self):
+        for comp in self.valid_comparisons:
+            self.do_stat_test(comp)
+
+    def do_stat_test(self, comparison=valid_comparisons[0]):
+        """ Runs statistical tests
+            Results are stored in self.protein_results and self.phospho_results """
+        if comparison not in self.valid_comparisons:
+            raise ValueError("Invalid comparison: see self.valid_comparison")
+
+        phos_res = run_protein(self.phospho_norm, comparison[0], comparison[1])
+        self.phospho_results[comparison] = phos_res
+
+        return phos_res
+
+    def do_anova(self, bayes=True):
+        """  2-way ANOVA """
+        design = pd.DataFrame.from_items([
+            ('Intercept', np.ones(len(self.data_cols))),
+            ('EnrichedEnvironment', [1,1,1,1,1,1,0,0,0,0]),
+            ('P25', [1,1,1,0,0,0,1,1,0,0]),
+            ('EnrichxP25', [1,1,1,0,0,0,0,0,0,0])
+            ])
+
+        if bayes:
+            self.phospho_anova,_ = anova_modt(
+                    self.phospho_norm, self.data_cols, design)
+        else:
+            self.phospho_anova,_ = anova_noreg(
+                    self.phospho_norm, self.data_cols, design)
+
+    def plot_results(self):
+        # Not used right now: if we get total protein data keep this
+        """
+        for (k,v) in self.protein_results.iteritems():
+            if v is not None:
+                generate_figures(v, LABEL_COLS_PROT,
+                        filename='Sep/Sep_total_prot_%s_x_%s' % k)
+            else:
+                print "%s vs %s skipped in Sep figure gen" % comparison
+        """
+        for (k,v) in self.phospho_results.iteritems():
+            if v is not None:
+                generate_figures(v, LABEL_COLS_PROT,
+                        filename='Sep/Sep_phospho_%s_x_%s' % k)
+            else:
+                print "%s vs %s skipped in Sep figure gen" % k
+
+    def write_results(self):
+        # Not used right now: if we get total protein data keep this
+        """
+        for (k,v) in self.protein_results.iteritems():
+            if v is not None:
+                v.to_csv('./results/Sep/Sep_protein_%s_x_%s.csv', index=False)
+            else:
+                print "%s vs %s skipped in Sep results saving" % comparison
+        """
+        for (k,v) in self.phospho_results.iteritems():
+            if v is not None:
+                v.to_csv('./results/Sep/Sep_phospho_%s_x_%s.csv' % k, index=False)
+            else:
+                print "%s vs %s skipped in Sep results saving" % k
+
+        if hasattr(self, 'phospho_anova'):
+            self.phospho_anova.to_csv(
+                    './results/Sep/Sep_phospho_ANOVA.csv',
+                    index=False)
 
 class RunTyr:
     """ Class to encapsulate the Tyrosine dataset and associated procedures """
@@ -155,7 +303,7 @@ class RunTyr:
                 title='Tyr/raw_quality/Tyr_phospho_norm', col_groups=self.groups)
 
     def do_all_stat_tests(self):
-        for comp in self.valid_comparison:
+        for comp in self.valid_comparisons:
             self.do_stat_test(comp)
 
     def do_stat_test(self, comparison=valid_comparisons[0]):
@@ -221,7 +369,7 @@ class RunTyr:
 
         if hasattr(self, 'phospho_anova'):
             self.phospho_anova.to_csv(
-                    './results/Tyr/Tyr_phospho_ANOVA.csv', 
+                    './results/Tyr/Tyr_phospho_ANOVA.csv',
                     index=False)
 
 

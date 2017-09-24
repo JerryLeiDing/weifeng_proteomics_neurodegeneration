@@ -389,16 +389,16 @@ read_phosphos_sept <- function() {
         'phosphoresidues',
         'protein_sites',
         'maxscore',
-        'P25_EE_A1',
-        'P25_EE_A2',
-        'P25_EE_A3',
-        'CT_EE_A1',
-        'CT_EE_A2',
-        'CT_EE_A3',
-        'P25_HC_A1',
-        'P25_HC_A2',
-        'CT_HC_A1',
-        'CT_HC_A2')
+        'P25xEE_A1',
+        'P25xEE_A2',
+        'P25xEE_A3',
+        'EE_A1',
+        'EE_A2',
+        'EE_A3',
+        'P25_A1',
+        'P25_A2',
+        'CT_A1',
+        'CT_A2')
 
   # Reorder data so intensities are first
   data <- data[,c(11:20,9,2:6,8)]
