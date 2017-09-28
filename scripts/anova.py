@@ -11,6 +11,7 @@ from stat_tests import *
 from plots import *
 
 
+ALPHA = 0.05  # Significance threshold for FDR
 
 def validate_comp_subset_data(data, comp1, comp2):
     """ Validates that comp1 and comp2 define a valid comparison
@@ -68,20 +69,15 @@ def run_protein(data, comp1, comp2, plex='both'):
         elif c == u'fold_change':
             continue  # Don't adjust the pval for fold change
         else:
-            _, adj, _, _ = multipletests(pvals[c], alpha=0.05, method='fdr_bh')
+            _, adj, _, _ = multipletests(pvals[c], alpha=ALPHA, method='fdr_bh')
             pvals[c+'_adj'] = adj
 
-    keep_cols = [
-            'accession_number',
-            'geneSymbol',
-            'entry_name',
-        ]
-    if 'numPepsUnique' in data.columns:
-        keep_cols = ['numPepsUnique'] + keep_cols
     # TODO check for optional columns
     # Should really make this a global option in a settings file somewhere
     # OR just keep everything that isn't explicitly removed?
-    return pd.concat((c1, c2, data[keep_cols], pvals), axis=1)
+    # Now bind together everything into one df
+    aux_data = data.drop(list(c1.columns) + list(c2.columns), axis=1)
+    return pd.concat((c1, c2, aux_data, pvals), axis=1)
 
 
 def anova_modt(df, columns, design):
@@ -112,23 +108,31 @@ def anova_modt(df, columns, design):
             result,
             number=data.shape[0],
             sort_by='none')).iloc[:,:len(coefs)+3]
+    # Adjust overall p-value
+    res_coef['P.Value.Adj'] = multipletests(
+            res_coef['P.Value'], alpha=ALPHA, method='fdr_bh')[1]
     # F-test for significance for terms OTHER than intercept and PlexB
     # Do this iteratively and obtain a p-value and F-value for every coefficient
     coefs.remove('Intercept')
     # Create mapping of coefficients to F and PVal columns
-    coef_col_map = {c: ['F_'+c, 'PVal_'+c] for c in coefs}
-    result_colnames = [y for x in coef_col_map.values() for y in x]
+    coef_col_map = {c: ['F_%s'%c, 'PVal_%s'%c, 'PVal_%s_Adj'%c] for c in coefs}
+    result_colnames = [col for cols in coef_col_map.values() for col in cols]
     # Create empty pvalue df
     res_f = pd.DataFrame(
             index=np.arange(data.shape[0]),
             columns=result_colnames,
             dtype=float)
     for c in coef_col_map.keys():
-        res_f[coef_col_map[c]] = pandas2ri.ri2py(r['topTable'](
+        # Find F and pvals/adj_pvals for each coefficient
+        F_pv = pandas2ri.ri2py(r['topTable'](
                 result,
                 coef=c,
                 number=data.shape[0],
-                sort_by='none'))[['t', 'P.Value']].values
+                sort_by='none'))[['t', 'P.Value']]
+        _, pv_adj, _, _ = multipletests(F_pv['P.Value'], alpha=ALPHA, method='fdr_bh')
+        res_f[coef_col_map[c]] = np.concatenate(
+                (F_pv.values, pv_adj[:,np.newaxis]), axis=1)
+
     # Now bind together everything into one df
     aux_data = df.drop(columns, axis=1).reset_index(drop=True)
     data.reset_index(drop=True, inplace=True)
@@ -174,7 +178,7 @@ def anova_noreg(df, columns, design):
     for_anova = design.copy()
     # Now for each row in data, run ANOVA separately
     for i in xrange(data.shape[0]):
-        if i % 100 == 0:
+        if i % 1000 == 0:
             print i
         for_anova['Y'] = data.iloc[i].values.astype(float)
         fit = ols('Y ~ ' + ' + '.join(coefs_no_intercept), for_anova).fit()
@@ -186,10 +190,16 @@ def anova_noreg(df, columns, design):
         for c in anova_res.index:
             if c in coef_col_map:
                 result.iloc[i][coef_col_map[c]]= anova_res.loc[c][-2:].values
+    # Adjust pvals
+    pv_adj = pd.DataFrame({
+        'PVal_%s_Adj' % coef: multipletests(
+            result['PVal_%s'%coef], alpha=ALPHA, method='fdr_bh')[1]
+         for coef in coefs_no_intercept
+        })
     # Now bind together everything into one df
     aux_data = df.drop(columns, axis=1).reset_index(drop=True)
     data.reset_index(drop=True, inplace=True)
-    res_df = pd.concat((data, result, aux_data), axis=1)
+    res_df = pd.concat((data, result, pv_adj, aux_data), axis=1)
     return res_df
 
 # The following code is specifically for the 2x2 ANOVA in the August dataset

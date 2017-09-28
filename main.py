@@ -181,12 +181,18 @@ class RunMarch:
 
 class RunSept:
     """ Class to encapsulate the Sept dataset and associated procedures """
-    data_cols = ['P25xEE_A1','P25xEE_A2','P25xEE_A3',
+    data_cols = [
+                 # TODO: change me back if we figure out the p25xEE_A1 col
+                 # 'P25xEE_A1','P25xEE_A2','P25xEE_A3', 
+                 'P25xEE_A2','P25xEE_A3',
                  'EE_A1','EE_A2','EE_A3',
                  'P25_A1','P25_A2',
                  'CT_A1','CT_A2']
+
     groups = [
-            ('P25_EE', ['P25xEE_A1','P25xEE_A2','P25xEE_A3']),
+            # TODO same as above
+            # ('P25_EE', ['P25xEE_A1','P25xEE_A2','P25xEE_A3']),
+            ('P25_EE', ['P25xEE_A2','P25xEE_A3']),
             ('EE', ['EE_A1','EE_A2','EE_A3']),
             ('P25', ['P25_A1','P25_A2']),
             ('Control', ['CT_A1','CT_A2']),
@@ -197,7 +203,11 @@ class RunSept:
     phospho_results = dict.fromkeys(valid_comparisons, None)
 
     def __init__(self):
-        self.phospho_norm = pd.read_csv('data/Sept_2017/phospho.csv')
+        # TODO same as above
+        # self.phospho_norm = pd.read_csv('data/Sept_2017/phospho.csv')
+
+        self.phospho_norm = pd.read_csv('data/Sept_2017/phospho.csv').drop(
+                'P25xEE_A1', axis=1, inplace=False)
 
 
     def plot_quality(self):
@@ -222,20 +232,26 @@ class RunSept:
 
         return phos_res
 
-    def do_anova(self, bayes=True):
+    def do_anova(self, nobayes=True):
         """  2-way ANOVA """
+        # TODO change me back!
+        # design = pd.DataFrame.from_items([
+        #     ('Intercept', np.ones(len(self.data_cols))),
+        #     ('EnrichedEnvironment', [1,1,1,1,1,1,0,0,0,0]),
+        #     ('P25', [1,1,1,0,0,0,1,1,0,0]),
+        #     ('EnrichxP25', [1,1,1,0,0,0,0,0,0,0])
+        #     ])
         design = pd.DataFrame.from_items([
             ('Intercept', np.ones(len(self.data_cols))),
-            ('EnrichedEnvironment', [1,1,1,1,1,1,0,0,0,0]),
-            ('P25', [1,1,1,0,0,0,1,1,0,0]),
-            ('EnrichxP25', [1,1,1,0,0,0,0,0,0,0])
+            ('EnrichedEnvironment', [1,1,1,1,1,0,0,0,0]),
+            ('P25', [1,1,0,0,0,1,1,0,0]),
+            ('EnrichxP25', [1,1,0,0,0,0,0,0,0])
             ])
 
-        if bayes:
-            self.phospho_anova,_ = anova_modt(
-                    self.phospho_norm, self.data_cols, design)
-        else:
-            self.phospho_anova,_ = anova_noreg(
+        self.phospho_anova,_ = anova_modt(
+                self.phospho_norm, self.data_cols, design)
+        if nobayes:
+            self.phospho_anova_nobayes = anova_noreg(
                     self.phospho_norm, self.data_cols, design)
 
     def plot_results(self):
@@ -255,6 +271,19 @@ class RunSept:
             else:
                 print "%s vs %s skipped in Sep figure gen" % k
 
+        if hasattr(self, 'phospho_anova'):
+            generate_anova_figures(
+                    self.phospho_anova,
+                    ['EnrichxP25', 'EnrichedEnvironment', 'P25'],
+                    filename='Sep/Sep_phospho')
+
+        if hasattr(self, 'phospho_anova_nobayes'):
+            generate_anova_figures(
+                    self.phospho_anova_nobayes,
+                    ['EnrichxP25', 'EnrichedEnvironment', 'P25'],
+                    filename='Sep/Sep_phospho_nobayes')
+
+
     def write_results(self):
         # Not used right now: if we get total protein data keep this
         """
@@ -273,6 +302,10 @@ class RunSept:
         if hasattr(self, 'phospho_anova'):
             self.phospho_anova.to_csv(
                     './results/Sep/Sep_phospho_ANOVA.csv',
+                    index=False)
+        if hasattr(self, 'phospho_anova_nobayes'):
+            self.phospho_anova.to_csv(
+                    './results/Sep/Sep_phospho_ANOVA_nobayes.csv',
                     index=False)
 
 class RunTyr:
@@ -317,7 +350,7 @@ class RunTyr:
 
         return phos_res
 
-    def do_anova(self, bayes=True):
+    def do_anova(self, nobayes=True):
         """ Runs 1-way ANOVA """
 
         # Create design matrix
@@ -328,11 +361,10 @@ class RunTyr:
             ('KOSAP', [0,0,0,0,0,0,1,1,0,0]),
             ])
 
-        if bayes:
-            self.phospho_anova,_ = anova_modt(
-                    self.phospho_norm, self.data_cols, design)
-        else:
-            self.phospho_anova,_ = anova_noreg(
+        self.phospho_anova,_ = anova_modt(
+                self.phospho_norm, self.data_cols, design)
+        if nobayes:
+            self.phospho_anova_nobayes = anova_noreg(
                     self.phospho_norm, self.data_cols, design)
 
     def plot_results(self):
@@ -352,24 +384,40 @@ class RunTyr:
             else:
                 print "%s vs %s skipped in Tyr figure gen" % comparison
 
+        if hasattr(self, 'phospho_anova'):
+            generate_anova_figures(
+                    self.phospho_anova,
+                    ['KO93', 'KO95', 'KOSAP'],
+                    filename='Tyr/Tyr_phospho')
+
+        if hasattr(self, 'phospho_anova_nobayes'):
+            generate_anova_figures(
+                    self.phospho_anova_nobayes,
+                    ['KO93', 'KO95', 'KOSAP'],
+                    filename='Tyr/Tyr_phospho_nobayes')
+
     def write_results(self):
         # Not used right now: if we get total protein data keep this
         """
         for (k,v) in self.protein_results.iteritems():
             if v is not None:
-                v.to_csv('./results/Tyr/Tyr_protein_%s_x_%s.csv', index=False)
+                v.to_csv('./results/Tyr/Tyr_protein_%s_x_%s.csv' % k, index=False)
             else:
                 print "%s vs %s skipped in Tyr results saving" % comparison
         """
         for (k,v) in self.phospho_results.iteritems():
             if v is not None:
-                v.to_csv('./results/Tyr/Tyr_phospho_%s_x_%s.csv', index=False)
+                v.to_csv('./results/Tyr/Tyr_phospho_%s_x_%s.csv' % k, index=False)
             else:
-                print "%s vs %s skipped in Tyr results saving" % comparison
+                print "%s vs %s skipped in Tyr results saving" % k
 
         if hasattr(self, 'phospho_anova'):
             self.phospho_anova.to_csv(
                     './results/Tyr/Tyr_phospho_ANOVA.csv',
+                    index=False)
+        if hasattr(self, 'phospho_anova_nobayes'):
+            self.phospho_anova.to_csv(
+                    './results/Tyr/Tyr_phospho_ANOVA_nobayes.csv',
                     index=False)
 
 

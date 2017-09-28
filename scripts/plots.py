@@ -6,6 +6,11 @@ import pandas as pd
 
 from scipy.stats.stats import pearsonr
 
+# TODO:
+# Within significant genes in ANOVA, find KO93 and KO95 in opposite directions
+# PCA on significant hits in ANOVA
+# See if clustered: enrichment in pathway for each cluster?
+
 def plot_pvalue_dist(pvals, axes=None):
     """
     Pvals should be a Pandas dataframe
@@ -36,8 +41,18 @@ def plot_pvalue_dist(pvals, axes=None):
 
 
 def volcano_plots(pval_df, fold_change, alpha=0.05, axes=None):
+    """ Note: if fold_change is 2D, then will use one column for each pval
+        Otherwise, will share single fold change column among all plots
+    """
     valid_labels = sorted(list(pval_df.columns))
     m = len(valid_labels)
+    # Validate fold changes: check if 2D
+    list_fc = (len(fold_change.shape) > 1)
+    if list_fc and fold_change.shape[1] != m:
+        raise ValueError("Error in volcano_plots: \
+                If fold_change is 2D the number of columns must equal \
+                the number of columns in pval_df")
+
     if axes is None:
         f, axes = plt.subplots(1, m, sharey='row', squeeze=True)
     else:
@@ -60,7 +75,17 @@ def volcano_plots(pval_df, fold_change, alpha=0.05, axes=None):
         mask = np.isfinite(pv)
         thresh = (pv[mask] <= alpha)
 
-        ax.scatter(fold_change[mask], -np.log10(pv[mask]),
+        if list_fc: 
+            try:
+                # If pandas df
+                fc = fold_change.iloc[:,i]
+            except AttributeError:
+                # Numpy array
+                fc = fold_change[:,i]
+        else:
+            fc = fold_change
+
+        ax.scatter(fc[mask], -np.log10(pv[mask]),
                    c=thresh, alpha=0.15, cmap=matplotlib.cm.coolwarm, lw=0)
         (l, r) = ax.get_xlim()
         ax.plot([l, r], [ALPHA, ALPHA], color='grey', lw=1, linestyle='--')
@@ -147,6 +172,34 @@ def compare_measures(res, label_cols, label_cols2=None, title='',
     f.tight_layout()
     return f
 
+
+def generate_anova_figures(res, coef_cols, adj=True, filename=''):
+    """
+    Generate QA figures and related for anova
+    """
+    # TODO histogram of adj p-vals for each coefficient (only ModT)
+    # volcano plot of each condition comparison?
+    # But how would you do this for the interaction term?
+    # Plot value of coefficient vs p-val(!)
+    
+    # Plot raw p-values (histogram, volcano plot, fc distribution)
+    pval_cols = ['PVal_%s' % coef for coef in coef_cols]
+    f, axarr = plt.subplots(2, len(coef_cols), figsize=(16, 10))
+    plot_pvalue_dist(res[pval_cols], axes=axarr[0])
+    volcano_plots(res[pval_cols], res[coef_cols], axes=axarr[1])
+    f.tight_layout(rect=(0, 0, 1, 0.95))
+    f.suptitle('%s raw p-values' % filename)
+    f.savefig('figures/%s_ANOVA_volcano_raw.png' % filename, dpi=100)
+
+    # Plot adj p-values (histogram, volcano plot, fc distribution)
+    if adj:
+        adj_pval_cols = ['PVal_%s_Adj' % coef for coef in coef_cols]
+        f, axarr = plt.subplots(2, len(coef_cols), figsize=(16, 10))
+        plot_pvalue_dist(res[adj_pval_cols], axes=axarr[0])
+        volcano_plots(res[adj_pval_cols], res[coef_cols], axes=axarr[1])
+        f.tight_layout(rect=(0, 0, 1, 0.95))
+        f.suptitle('%s adjusted p-values' % filename)
+        f.savefig('figures/%s_ANOVA_volcano_adj.png' % filename, dpi=100)
 
 
 def generate_figures(res, label_cols=LABEL_COLS, filename='psm'):
